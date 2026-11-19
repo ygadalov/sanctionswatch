@@ -58,6 +58,7 @@ const I18N = {
     d_warn: "Совпадение по имени — это не совпадение личности. Сверьте дату рождения, документ или адрес в карточке выше.",
     t_person: "Физлицо", t_entity: "Организация", t_vessel: "Судно", t_aircraft: "Возд. судно", t_unknown: "Прочее",
     added: "добавлено", removed: "удалено", initial_load: "Первичная загрузка данных",
+    log_csv: "Скачать CSV",
     country_unknown: "Без страны", lang_btn: "EN",
     col_name: "Название", col_count: "Записей", col_url: "URL", col_fmt: "Формат", col_status: "Статус",
     hs_ok: "OK", hs_stale: "кеш (сбой загрузки)", hs_failed: "недоступен", hs_checked: "Проверка источников",
@@ -112,6 +113,7 @@ const I18N = {
     d_warn: "A name match is not an identity match. Check the date of birth, document or address in the record above.",
     t_person: "Individual", t_entity: "Entity", t_vessel: "Vessel", t_aircraft: "Aircraft", t_unknown: "Other",
     added: "added", removed: "removed", initial_load: "Initial data load",
+    log_csv: "Download CSV",
     country_unknown: "No country", lang_btn: "RU",
     col_name: "Name", col_count: "Entries", col_url: "URL", col_fmt: "Format", col_status: "Status",
     hs_ok: "OK", hs_stale: "cache (fetch failed)", hs_failed: "unavailable", hs_checked: "Sources checked",
@@ -437,17 +439,26 @@ function renderDashboard() {
   if (yc && (s.by_year_official || s.by_year_os)) {
     const off = s.by_year_official || {}, os = s.by_year_os || {};
     const years = [...new Set([...Object.keys(off), ...Object.keys(os)])].sort();
-    const max = Math.max(1, ...years.map((y) => Math.max(off[y] || 0, os[y] || 0)));
-    const h = (n) => Math.round(Math.sqrt(n / max) * 100); // sqrt-шкала: 2023 не забивает мелкие годы
+    const tot = (y) => (off[y] || 0) + (os[y] || 0);
+    const max = Math.max(1, ...years.map(tot));
+    const lastY = +years[years.length - 1];
+    const lastLabeled = Math.floor(lastY / 5) * 5; // ближайший «круглый» год снизу
     yc.innerHTML =
-      `<div class="ygrid">` + years.map((y) =>
-        `<div class="ycol" title="${y}: ${t("years_official")} — ${fmt.format(off[y] || 0)}; ${t("years_os")} — ${fmt.format(os[y] || 0)}">
-          <div class="ybars">
-            <div class="ybar os" style="height:${h(os[y] || 0)}%"></div>
-            <div class="ybar off" style="height:${h(off[y] || 0)}%"></div>
-          </div>
-          ${(+y % 5 === 0 || y === years[years.length - 1]) ? `<div class="ylab">${y}</div>` : `<div class="ylab"></div>`}
-        </div>`).join("") +
+      `<div class="ygrid">` + years.map((y) => {
+        const o = off[y] || 0, p = os[y] || 0, sum = o + p;
+        const bh = Math.sqrt(sum / max) * 100; // sqrt-шкала: 2023 не забивает мелкие годы
+        const offH = sum ? (o / sum) * 100 : 0;
+        // подпись — на круглых годах; последний год — только если не слипается с круглой подписью
+        const showLab = (+y % 5 === 0) || (+y === lastY && lastY - lastLabeled > 2);
+        return `<div class="ycol" title="${y}: ${t("years_official")} — ${fmt.format(o)}; ${t("years_os")} — ${fmt.format(p)}">
+          <div class="ybars"><div class="ybar" style="height:${bh}%">
+            <div class="yseg os" style="height:${100 - offH}%"></div>
+            <div class="yseg off" style="height:${offH}%"></div>
+          </div></div>
+          <div class="ytick${showLab ? " big" : ""}"></div>
+          <div class="ylab">${showLab ? y : ""}</div>
+        </div>`;
+      }).join("") +
       `</div>
        <div class="ylegend">
          <span><i class="ysw off"></i>${t("years_official")}</span>
@@ -910,6 +921,7 @@ document.getElementById("advReset").addEventListener("click", () => {
 
 /* ---------- changelog ---------- */
 let changelogLoaded = false;
+let CHANGELOG = []; // распарсенные записи журнала (для CSV-выгрузки)
 async function renderChangelog() {
   if (changelogLoaded) return;
   changelogLoaded = true;
@@ -917,7 +929,11 @@ async function renderChangelog() {
   try {
     const txt = await (await fetch("data/changelog.jsonl")).text();
     const lines = txt.trim().split("\n").filter(Boolean).map(JSON.parse).reverse();
+    CHANGELOG = lines;
     if (!lines.length) { box.innerHTML = `<div class="empty">—</div>`; return; }
+    const names10 = (list, count, cls) => list && list.length
+      ? `<div class="cl-names">${list.slice(0, 10).map((a) => esc(a.name || a.id)).join("<br>")}${count > 10 ? `<br>…${cls === "rem" ? "−" : "+"}${count - 10}` : ""}</div>`
+      : "";
     box.innerHTML = lines.map((en) => {
       const dt = new Date(en.ts).toLocaleString(LANG === "ru" ? "ru-RU" : "en-GB");
       const body = en.initial
@@ -926,7 +942,8 @@ async function renderChangelog() {
             <div class="cl-src"><b>${src}</b>:
               <span class="cnt add">+${c.added_count} ${t("added")}</span> ·
               <span class="cnt rem">−${c.removed_count} ${t("removed")}</span></div>
-            ${c.added && c.added.length ? `<div class="cl-names">${c.added.slice(0, 10).map((a) => esc(a.name)).join("<br>")}${c.added_count > 10 ? `<br>…+${c.added_count - 10}` : ""}</div>` : ""}`)
+            ${names10(c.added, c.added_count, "add")}
+            ${names10(c.removed, c.removed_count, "rem")}`)
           .join("");
       return `<div class="cl-entry"><div class="cl-date">${dt}</div>${body}</div>`;
     }).join("");
@@ -934,6 +951,21 @@ async function renderChangelog() {
     box.innerHTML = `<div class="empty">—</div>`;
   }
 }
+document.getElementById("logCsv").addEventListener("click", () => {
+  if (!CHANGELOG.length) return;
+  const rows = [["timestamp", "source", "action", "id", "name"]];
+  for (const en of [...CHANGELOG].reverse()) { // от старых к новым
+    for (const [src, c] of Object.entries(en.changes || {})) {
+      for (const a of c.added || []) rows.push([en.ts, src, "added", a.id, a.name || ""]);
+      for (const r of c.removed || []) rows.push([en.ts, src, "removed", r.id, r.name || ""]);
+    }
+  }
+  const csv = rows.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\r\n");
+  const url = URL.createObjectURL(new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" }));
+  const a = Object.assign(document.createElement("a"), { href: url, download: "sanctionswatch-changelog.csv" });
+  a.click();
+  URL.revokeObjectURL(url);
+});
 
 /* ---------- sources view ---------- */
 async function renderSources() {
