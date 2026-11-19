@@ -1,0 +1,95 @@
+{
+ "generated_at": "2026-11-19T15:53:08+00:00",
+ "guard": "",
+ "sources": {
+  "US": {
+   "name": "OFAC SDN + Consolidated (США)",
+   "url": "https://sanctionslistservice.ofac.treas.gov/api/download/sdn.xml",
+   "status": "ok",
+   "records": 19571,
+   "error": "",
+   "note": "",
+   "cached": true
+  },
+  "UK": {
+   "name": "UK Sanctions List (Великобритания)",
+   "url": "https://sanctionslist.fcdo.gov.uk/docs/UK-Sanctions-List.xml",
+   "status": "ok",
+   "records": 6449,
+   "error": "",
+   "note": "",
+   "cached": true
+  },
+  "UN": {
+   "name": "UN SC Consolidated List (ООН)",
+   "url": "https://scsanctions.un.org/resources/xml/en/consolidated.xml",
+   "status": "ok",
+   "records": 1007,
+   "error": "",
+   "note": "",
+   "cached": true
+  },
+  "EU": {
+   "name": "EU Consolidated FSF (ЕС)",
+   "url": "https://data.opensanctions.org/datasets/latest/eu_fsf/targets.simple.csv",
+   "status": "ok",
+   "records": 6163,
+   "error": "",
+   "note": "",
+   "cached": true
+  },
+  "AU": {
+   "name": "DFAT Consolidated List (Австралия)",
+   "url": "https://data.opensanctions.org/datasets/latest/au_dfat_sanctions/targets.simple.csv",
+   "status": "ok",
+   "records": 3911,
+   "error": "",
+   "note": "",
+   "cached": true
+  },
+  "JP": {
+   "name": "MOF Economic Sanctions (Япония)",
+   "url": "https://data.opensanctions.org/datasets/latest/jp_mof_sanctions/targets.simple.csv",
+   "status": "ok",
+   "records": 2834,
+   "error": "",
+   "note": "",
+   "cached": true
+  },
+  "CA": {
+   "name": "Canadian Consolidated Autonomous Sanctions (Канада)",
+   "url": "https://data.opensanctions.org/datasets/latest/ca_dfatd_sema_sanctions/targets.simple.csv",
+   "status": "ok",
+   "records": 5693,
+   "error": "",
+   "note": "",
+   "cached": true
+  },
+  "CH": {
+   "name": "SECO Sanctions (Швейцария)",
+   "url": "https://data.opensanctions.org/datasets/latest/ch_seco_sanctions/targets.simple.csv",
+   "status": "ok",
+   "records": 7038,
+   "error": "",
+   "note": "",
+   "cached": true
+  },
+  "US_CONS": {
+   "name": "OFAC Consolidated non-SDN (дополнение к US)",
+   "url": "https://sanctionslistservice.ofac.treas.gov/api/download/consolidated.xml",
+   "status": "ok",
+   "records": 486,
+   "error": "",
+   "note": "OFAC Consolidated non-SDN (дополнение к US)",
+   "cached": true
+  },
+  "US_OS": {
+   "name": "OpenSanctions SDN-зеркало (даты first_seen для судов US)",
+   "url": "https://data.opensanctions.org/datasets/latest/us_ofac_sdn/targets.simple.csv",
+   "status": "ok",
+   "records": 2156,
+   "error": "",
+   "note": "вспомогательный"
+  }
+ }
+}
