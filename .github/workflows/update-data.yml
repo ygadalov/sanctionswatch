@@ -1,0 +1,37 @@
+name: Update sanctions data
+
+on:
+  schedule:
+    # Раз в сутки ночью по Москве: 00:30 UTC = 03:30 МСК
+    - cron: "30 0 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Rebuild data (refresh all sources)
+        env:
+          REFRESH: "1"
+        run: python3 pipeline/build_data.py
+
+      - name: Commit if changed
+        run: |
+          git config user.name "sanctions-bot"
+          git config user.email "actions@github.com"
+          git add data/stats.json data/health.json data/entities data/changelog.jsonl data/snapshot_ids.json data/countries.geo.json index.html
+          if git diff --cached --quiet; then
+            echo "no changes"
+          else
+            git commit -m "[data-update] $(date -u +%Y-%m-%dT%H:%M)Z"
+            git push
+          fi
