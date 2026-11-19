@@ -698,6 +698,15 @@ def main():
 
     # ---- single flat file (client loads it once, browser caches it) ----
     (OUT / "entities").mkdir(parents=True, exist_ok=True)
+    # имена прежних записей — нужны чейнджлогу, чтобы назвать удалённые
+    prev_names = {}
+    old_all = OUT / "entities" / "all.json"
+    if old_all.exists():
+        try:
+            for e in json.loads(old_all.read_text()):
+                prev_names[e["id"]] = e["name"]
+        except Exception:
+            pass
     for old in (OUT / "entities").glob("*.json"):
         old.rmdir() if old.is_dir() else old.unlink()
     all_entities.sort(key=lambda x: x["key"])
@@ -722,7 +731,8 @@ def main():
         removed = sorted(set(prev.get(src, [])) - cur[src])
         if prev.get(src) is not None and (added or removed):
             changes[src] = {
-                "added": [{"id": i, "name": names.get(i, "")} for i in added[:200]],
+                "added": [{"id": i, "name": names.get(i, "")} for i in added[:500]],
+                "removed": [{"id": i, "name": prev_names.get(i, "")} for i in removed[:500]],
                 "removed_count": len(removed),
                 "added_count": len(added),
             }
