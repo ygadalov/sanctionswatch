@@ -1,15 +1,15 @@
 {
- "generated_at": "2026-11-19T15:53:08+00:00",
+ "generated_at": "2026-11-19T18:58:18+00:00",
  "guard": "",
  "sources": {
   "US": {
    "name": "OFAC SDN + Consolidated (США)",
    "url": "https://sanctionslistservice.ofac.treas.gov/api/download/sdn.xml",
    "status": "ok",
-   "records": 19571,
+   "records": 19595,
    "error": "",
    "note": "",
-   "cached": true
+   "cached": false
   },
   "UK": {
    "name": "UK Sanctions List (Великобритания)",
@@ -18,7 +18,7 @@
    "records": 6449,
    "error": "",
    "note": "",
-   "cached": true
+   "cached": false
   },
   "UN": {
    "name": "UN SC Consolidated List (ООН)",
@@ -27,7 +27,7 @@
    "records": 1007,
    "error": "",
    "note": "",
-   "cached": true
+   "cached": false
   },
   "EU": {
    "name": "EU Consolidated FSF (ЕС)",
@@ -36,7 +36,7 @@
    "records": 6163,
    "error": "",
    "note": "",
-   "cached": true
+   "cached": false
   },
   "AU": {
    "name": "DFAT Consolidated List (Австралия)",
@@ -45,7 +45,7 @@
    "records": 3911,
    "error": "",
    "note": "",
-   "cached": true
+   "cached": false
   },
   "JP": {
    "name": "MOF Economic Sanctions (Япония)",
@@ -54,7 +54,7 @@
    "records": 2834,
    "error": "",
    "note": "",
-   "cached": true
+   "cached": false
   },
   "CA": {
    "name": "Canadian Consolidated Autonomous Sanctions (Канада)",
@@ -63,7 +63,7 @@
    "records": 5693,
    "error": "",
    "note": "",
-   "cached": true
+   "cached": false
   },
   "CH": {
    "name": "SECO Sanctions (Швейцария)",
@@ -72,7 +72,7 @@
    "records": 7038,
    "error": "",
    "note": "",
-   "cached": true
+   "cached": false
   },
   "US_CONS": {
    "name": "OFAC Consolidated non-SDN (дополнение к US)",
@@ -81,7 +81,7 @@
    "records": 486,
    "error": "",
    "note": "OFAC Consolidated non-SDN (дополнение к US)",
-   "cached": true
+   "cached": false
   },
   "US_OS": {
    "name": "OpenSanctions SDN-зеркало (даты first_seen для судов US)",
