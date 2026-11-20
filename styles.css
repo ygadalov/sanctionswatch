@@ -34,8 +34,8 @@
 *{box-sizing:border-box;margin:0;padding:0}
 html{color-scheme:light}
 [data-theme="dark"]{color-scheme:dark}
-html{overflow-x:hidden}
-body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15px;line-height:1.5;min-height:100dvh;display:flex;flex-direction:column;transition:background .25s,color .25s;font-feature-settings:"tnum";overflow-x:hidden}
+html{overflow-x:clip}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15px;line-height:1.5;min-height:100dvh;display:flex;flex-direction:column;transition:background .25s,color .25s;font-feature-settings:"tnum";overflow-x:clip}
 ::selection{background:var(--accent);color:var(--accent-ink)}
 a{color:var(--accent);text-decoration:none}
 a:hover{text-decoration:underline}
@@ -64,8 +64,8 @@ a:hover{text-decoration:underline}
   .top-inner{display:flex;align-items:center;gap:24px;padding:10px 24px}
   .row1{display:contents}
   .row1 .sp{display:none}
-  .navwrap{order:2;flex:1;margin-top:0;max-width:640px}
-  .top-right{order:3}
+  .navwrap{order:2;flex:1;margin-top:0;margin-left:auto;margin-right:auto;max-width:640px}
+  .top-right{order:3;margin-left:auto}
 }
 @media (max-width:900px){
   .top-inner{padding:10px 14px 12px}
@@ -93,8 +93,13 @@ main{flex:1;max-width:1440px;width:100%;margin:0 auto;padding:24px}
 .chip .k{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.08em}
 .chip button{background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;line-height:1;padding:2px 6px;border-radius:999px}
 .chip button:hover{color:var(--bad-fg);background:var(--bad-bg)}
-.chips .reset{background:none;border:1px solid var(--line);color:var(--muted);border-radius:999px;padding:5px 14px;font-size:12.5px;cursor:pointer}
-.chips .reset:hover{color:var(--bad-fg);border-color:var(--bad-fg)}
+.chips .reset{background:var(--bad-bg);border:1px solid color-mix(in srgb,var(--bad-fg) 40%,transparent);color:var(--bad-fg);border-radius:999px;padding:5px 14px;font-size:12.5px;cursor:pointer}
+.chips .reset:hover{border-color:var(--bad-fg);background:color-mix(in srgb,var(--bad-fg) 18%,transparent)}
+/* sticky-панель активных фильтров дашборда: липнет вплотную под шапкой, в рамке контента */
+#view-dashboard .chips{position:sticky;z-index:8;
+  margin:0 0 14px;padding:8px 10px;min-height:0;
+  background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  box-shadow:0 4px 12px rgba(15,23,42,.10)}
 .chips .loadnote{font-family:var(--mono);font-size:12px;color:var(--muted)}
 #view-changelog p:has(#logCsv){margin:12px 0 4px}
 .btn{background:none;border:1px solid var(--line);color:var(--muted);border-radius:999px;padding:6px 16px;font-size:12.5px;cursor:pointer;font-family:inherit}
@@ -162,6 +167,9 @@ main{flex:1;max-width:1440px;width:100%;margin:0 auto;padding:24px}
 #worldmap path.d0{fill:var(--map-empty);fill-opacity:1}
 #worldmap path.dn{fill:var(--accent)}
 #worldmap path.hover{fill:var(--map-hover);fill-opacity:1}
+/* выбранная страна (вариант 2C): тёмно-синяя заливка + белая обводка, остальные приглушены */
+#worldmap.hascountry path{opacity:.55}
+#worldmap.hascountry path.on{opacity:1;fill:#0B3D91;fill-opacity:1;stroke:#fff;stroke-width:1.4}
 #worldmap path.on{stroke:var(--accent-deep);stroke-width:1.6}
 #worldmap.filterable path{cursor:pointer}
 #mapTip{position:absolute;pointer-events:none;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:8px 12px;font-size:12px;box-shadow:0 4px 16px rgba(15,23,42,.18);display:none;z-index:5;max-width:240px}
@@ -264,6 +272,10 @@ main{flex:1;max-width:1440px;width:100%;margin:0 auto;padding:24px}
 .d-sec .mono{font-family:var(--mono);font-size:12.5px;font-feature-settings:"tnum"}
 .tag{display:inline-block;border:1px solid var(--line);border-radius:4px;padding:2px 8px;font-family:var(--mono);font-size:11.5px;margin:0 6px 6px 0;color:var(--muted)}
 .tag.ct{color:var(--text);border-color:var(--muted)}
+/* внешние базы по номеру судна/борта */
+.extlinks{display:flex;gap:8px;flex-wrap:wrap}
+.extlink{display:inline-block;border:1px solid var(--accent);color:var(--accent);border-radius:999px;padding:4px 12px;font-size:12.5px;text-decoration:none}
+.extlink:hover{background:var(--chip-bg)}
 .warn{margin-top:18px;padding:12px 14px;border:1px solid var(--warn-bg);background:var(--warn-bg);color:var(--warn-fg);font-size:12.5px;border-radius:6px;line-height:1.45}
 
 /* changelog */

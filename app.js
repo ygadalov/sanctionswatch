@@ -45,8 +45,8 @@ const I18N = {
     results_n: "совпадений",
     searching: "поиск…",
     type_q: "Введите запрос для проверки — минимум 2 символа.",
-    refine: "Уточнить", adv_year: "Год рождения", adv_dob: "Дата рождения", adv_dob_ph: "ДД.ММ.ГГГГ", adv_country: "Страна", adv_doc: "Документ / ИНН", adv_imo: "IMO (судно)", adv_reset: "Сбросить", adv_any: "Любая",
-    adv_hint: "Точное совпадение по документу, ИНН или IMO даёт 100% независимо от написания имени. Год или дата рождения отсекают записи с другой датой.",
+    refine: "Уточнить", adv_year: "Год рождения", adv_dob: "Дата рождения", adv_dob_ph: "ДД.ММ.ГГГГ", adv_country: "Страна", adv_doc: "Документ / ИНН", adv_imo: "IMO / бортовой № (судно, самолёт)", adv_reset: "Сбросить", adv_any: "Любая",
+    adv_hint: "Точное совпадение по документу, ИНН, IMO или бортовому/серийному номеру даёт 100% независимо от написания имени. Год или дата рождения отсекают записи с другой датой.",
     d_weak_aliases: "Слабые псевдонимы (OFAC)",
     weak_match: "Совпадение только по слабому псевдониму OFAC (weak aka) — высокий риск ложного срабатывания, обязательна сверка идентификаторов.",
     id_match: "Точное совпадение по идентификатору",
@@ -56,6 +56,8 @@ const I18N = {
     d_aliases: "Также известен как", d_countries: "Страны", d_programs: "Программы", d_ids: "Идентификаторы",
     d_dob: "Дата рождения", d_listed: "Включён в список", d_listed_os: "Отслеживается с (по данным агрегатора)", d_source: "Источник", d_type: "Тип",
     d_warn: "Совпадение по имени — это не совпадение личности. Сверьте дату рождения, документ или адрес в карточке выше.",
+    d_extcheck: "Проверить по номеру (внешние базы)",
+    d_extcheck_note: "Позиция, статус и история — открываются в новой вкладке, внешние сайты.",
     t_person: "Физлицо", t_entity: "Организация", t_vessel: "Судно", t_aircraft: "Возд. судно", t_unknown: "Прочее",
     added: "добавлено", removed: "удалено", initial_load: "Первичная загрузка данных",
     log_csv: "Скачать CSV",
@@ -100,8 +102,8 @@ const I18N = {
     results_n: "matches",
     searching: "searching…",
     type_q: "Type a query to screen — at least 2 characters.",
-    refine: "Refine", adv_year: "Birth year", adv_dob: "Date of birth", adv_dob_ph: "MM/DD/YYYY", adv_country: "Country", adv_doc: "Document / Tax ID", adv_imo: "IMO (vessel)", adv_reset: "Reset", adv_any: "Any",
-    adv_hint: "An exact document, tax ID or IMO match scores 100% regardless of name spelling. Birth year or full birth date filters out records with a different date.",
+    refine: "Refine", adv_year: "Birth year", adv_dob: "Date of birth", adv_dob_ph: "MM/DD/YYYY", adv_country: "Country", adv_doc: "Document / Tax ID", adv_imo: "IMO / tail no. (vessel, aircraft)", adv_reset: "Reset", adv_any: "Any",
+    adv_hint: "An exact document, tax ID, IMO or tail/serial number match scores 100% regardless of name spelling. Birth year or full birth date filters out records with a different date.",
     d_weak_aliases: "Weak aliases (OFAC)",
     weak_match: "Match via an OFAC weak alias only — high false-positive risk, verify identifiers before treating as a hit.",
     id_match: "Exact identifier match",
@@ -111,6 +113,8 @@ const I18N = {
     d_aliases: "Also known as", d_countries: "Countries", d_programs: "Programs", d_ids: "Identifiers",
     d_dob: "Date of birth", d_listed: "Listed on", d_listed_os: "Tracked since (aggregator data)", d_source: "Source", d_type: "Type",
     d_warn: "A name match is not an identity match. Check the date of birth, document or address in the record above.",
+    d_extcheck: "Verify by number (external databases)",
+    d_extcheck_note: "Position, status and history — open in a new tab, external sites.",
     t_person: "Individual", t_entity: "Entity", t_vessel: "Vessel", t_aircraft: "Aircraft", t_unknown: "Other",
     added: "added", removed: "removed", initial_load: "Initial data load",
     log_csv: "Download CSV",
@@ -347,6 +351,9 @@ function syncNavScroll() {
   wrap.classList.toggle("scr", nav.scrollWidth > nav.clientWidth + 2);
   const act = nav.querySelector("a.active");
   if (act) act.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
+  // sticky-панель фильтров липнет вплотную под шапкой (высота шапки меняется на мобильном)
+  const hdr = document.querySelector(".top"), ch = document.getElementById("chips");
+  if (hdr && ch) ch.style.top = hdr.getBoundingClientRect().height + "px";
 }
 window.addEventListener("resize", syncNavScroll);
 
@@ -529,6 +536,7 @@ async function renderMap(s) {
     .filter(([k]) => k.length === 2 && k !== "ZZ").map(([, v]) => v));
   document.getElementById("mapMax").textContent = fmt.format(mapState.max);
   svg.classList.toggle("filterable", interactive());
+  svg.classList.toggle("hascountry", !!FILTERS.country); // выбранная страна: яркая заливка, остальные приглушены
   svg.innerHTML = GEO.features.map((f) => {
     const iso = f.properties.iso2;
     const n = iso ? (mapState.counts[iso] || 0) : 0;
@@ -723,7 +731,7 @@ function readAdv() {
     dob: parseDobQuery(advEls.dob.value),
     country: advEls.country.value,
     doc: norm(advEls.doc.value).replace(/[^a-z0-9\u0400-\u04FF]/g, ""),
-    imo: advEls.imo.value.replace(/\D/g, "").slice(0, 7),
+    imo: alnum(advEls.imo.value).slice(0, 10), // IMO судна или бортовой/серийный № самолёта (буквы+цифры)
   };
 }
 function advCount(a) { return (a.year ? 1 : 0) + (a.dob ? 1 : 0) + (a.country ? 1 : 0) + (a.doc ? 1 : 0) + (a.imo ? 1 : 0); }
@@ -760,7 +768,7 @@ async function search(query) {
 
   // --- уточняющие фильтры (жёсткие) ---
   if (adv.country) pool = pool.filter((e) => (e.countries || []).includes(adv.country));
-  if (adv.imo) pool = pool.filter((e) => (e.identifiers || []).some((i) => i.replace(/\D/g, "").includes(adv.imo)));
+  if (adv.imo) pool = pool.filter((e) => (e.identifiers || []).some((i) => alnum(i).includes(adv.imo)));
   if (adv.doc) pool = pool.filter((e) => (e.identifiers || []).some((i) => alnum(i).includes(adv.doc)));
   if (adv.year) pool = pool.filter((e) => {
     const ys = (e.dob || "").match(/\d{4}/g);
@@ -850,6 +858,31 @@ function renderResults() {
     r.addEventListener("click", () => { selected = +r.dataset.i; renderResults(); renderDetail(); }));
 }
 
+function extLinks(e) {
+  // внешние базы по номеру: IMO для судов, бортовой номер для самолётов
+  const ids = (e.identifiers || []).join("\n");
+  const out = [];
+  if (e.type === "vessel") {
+    const m = ids.match(/imo[:\s]*(\d{7})/i);
+    if (m) {
+      const imo = m[1];
+      out.push(["MarineTraffic", `https://www.marinetraffic.com/en/ais/details/ships/imo:${imo}`]);
+      out.push(["VesselFinder", `https://www.vesselfinder.com/vessels/details/${imo}`]);
+      out.push(["BalticShipping", `https://www.balticshipping.com/vessel/imo/${imo}`]);
+    }
+  }
+  if (e.type === "aircraft") {
+    const t = ids.match(/tail number[:\s]*([A-Z0-9][A-Z0-9-]{2,9})/i);
+    const nm = (e.name || "").match(/^([A-Z0-9]{1,2}-[A-Z0-9]{2,6})$/);
+    const reg = (t ? t[1] : nm ? nm[1] : "").toLowerCase();
+    if (reg) {
+      out.push(["FlightRadar24", `https://www.flightradar24.com/data/aircraft/${reg}`]);
+      out.push(["Planespotters", `https://www.planespotters.net/search?q=${reg}`]);
+      out.push(["FlightAware", `https://www.flightaware.com/resources/registration/${reg.toUpperCase()}`]);
+    }
+  }
+  return out;
+}
 function renderDetail() {
   const searched = norm(qEl.value).length >= 2 || advCount(readAdv()) > 0;
   if ((selected < 0 || !results[selected]) && searched) {
@@ -862,6 +895,7 @@ function renderDetail() {
   }
   const [score, e] = results[selected];
   const srcName = (STATS.sources[e.source] || {}).name || e.source;
+  const ext = extLinks(e);
   const ms = (e.measures && e.measures.length ? e.measures : ["blocking"]);
   detEl.innerHTML = `
     <h3>${esc(e.name)}</h3>
@@ -875,6 +909,7 @@ function renderDetail() {
     ${(e.countries || []).length ? `<div class="d-sec"><h4>${t("d_countries")}</h4><div>${e.countries.map((c) => `<span class="tag ct">${esc(c)}</span>`).join("")}</div></div>` : ""}
     ${(e.programs || []).length ? `<div class="d-sec"><h4>${t("d_programs")}</h4><div>${e.programs.map((p) => `<span class="tag">${esc(p)}</span>`).join("")}</div></div>` : ""}
     ${(e.identifiers || []).length ? `<div class="d-sec"><h4>${t("d_ids")}</h4><div class="mono">${e.identifiers.map(esc).join("<br>")}</div></div>` : ""}
+    ${ext.length ? `<div class="d-sec"><h4>${t("d_extcheck")}</h4><div class="extlinks">${ext.map(([n, u]) => `<a class="extlink" href="${u}" target="_blank" rel="noopener">${n} ↗</a>`).join("")}</div><div class="muted small" style="margin-top:6px">${t("d_extcheck_note")}</div></div>` : ""}
     ${(e.aliases || []).length ? `<div class="d-sec"><h4>${t("d_aliases")}</h4><div class="mono">${e.aliases.slice(0, 12).map(esc).join("<br>")}${e.aliases.length > 12 ? `<br><span class="muted">…+${e.aliases.length - 12}</span>` : ""}</div></div>` : ""}
     ${(e.weak_aliases || []).length ? `<div class="d-sec"><h4>${t("d_weak_aliases")}</h4><div class="mono muted">${e.weak_aliases.slice(0, 8).map(esc).join("<br>")}${e.weak_aliases.length > 8 ? `<br>…+${e.weak_aliases.length - 8}` : ""}</div></div>` : ""}
     ${e._weakm ? `<div class="warn">${t("weak_match")}</div>` : ""}
