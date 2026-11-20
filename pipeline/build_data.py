@@ -276,7 +276,7 @@ PROGRAM_GROUPS = [
     ("Китай / Синьцзян / Гонконг", r"XINJIANG|HONG KONG|HK-EO|CHINA|XPCC|CMIC"),
     ("Балканы", r"BALKAN|BOSNIA|SERBIA|KOSOVO"),
     ("Никарагуа", r"NICARAGUA|\bNIC\b"),
-    ("Зимбабве", r"ZIMBABWE|\bZIM\b"),
+    ("Зимбабве", r"Зимбабве".replace('Зимбабве','ZIMBABWE') + r"|\bZIM\b"),
     ("Африка (Мали, ЦАР, Конго)", r"MALI|CAR\b|CENTRAL AFRICAN|DRCONGO|\bCOD\b|CONGO"),
     ("Непролиферация", r"NPWMD|WMD|PROLIF|ITSR"),
     ("Морские / теневой флот", r"PIRACY|MARITIME|\(VESSELS\)|VESSELS\) -"),
@@ -731,8 +731,8 @@ def main():
         removed = sorted(set(prev.get(src, [])) - cur[src])
         if prev.get(src) is not None and (added or removed):
             changes[src] = {
-                "added": [{"id": i, "name": names.get(i, "")} for i in added[:500]],
-                "removed": [{"id": i, "name": prev_names.get(i, "")} for i in removed[:500]],
+                "added": [{"id": i, "name": names.get(i, "")} for i in added],
+                "removed": [{"id": i, "name": prev_names.get(i, "")} for i in removed],
                 "removed_count": len(removed),
                 "added_count": len(added),
             }

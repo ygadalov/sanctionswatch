@@ -96,6 +96,7 @@ main{flex:1;max-width:1440px;width:100%;margin:0 auto;padding:24px}
 .chips .reset{background:none;border:1px solid var(--line);color:var(--muted);border-radius:999px;padding:5px 14px;font-size:12.5px;cursor:pointer}
 .chips .reset:hover{color:var(--bad-fg);border-color:var(--bad-fg)}
 .chips .loadnote{font-family:var(--mono);font-size:12px;color:var(--muted)}
+#view-changelog p:has(#logCsv){margin:12px 0 4px}
 .btn{background:none;border:1px solid var(--line);color:var(--muted);border-radius:999px;padding:6px 16px;font-size:12.5px;cursor:pointer;font-family:inherit}
 .btn:hover{color:var(--accent);border-color:var(--accent)}
 
