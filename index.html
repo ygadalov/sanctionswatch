@@ -7,34 +7,39 @@
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link rel="preload" href="fonts/inter-cyrillic.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="fonts.css?v=202611200930">
-<link rel="stylesheet" href="styles.css?v=202611200930">
+<link rel="stylesheet" href="fonts.css?v=202611201600">
+<link rel="stylesheet" href="styles.css?v=202611201600">
 </head>
 <body>
 <header class="top">
   <div class="top-inner">
-    <a class="brand" href="#/dashboard">
-      <svg width="22" height="22" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true">
-        <circle cx="24" cy="24" r="19"/>
-        <path d="M24 5v38"/>
-        <ellipse cx="24" cy="24" rx="10" ry="19"/>
-        <path d="M9 13.5Q24 9.5 39 13.5"/>
-        <path d="M9 34.5Q24 38.5 39 34.5"/>
-        <path d="M5.5 24C11.5 19 17.5 17 24 17s12.5 2 18.5 7C36 29 30.5 31 24 31s-12.5-2-18.5-7Z" fill="#0F172A"/>
-        <circle cx="24" cy="24" r="4.6" fill="currentColor" stroke="none"/>
-      </svg>
-      <span class="brand-name">Sanctions<b>Watch</b></span>
-    </a>
-    <nav class="nav" id="nav">
-      <a href="#/dashboard" data-route="dashboard" data-i18n="nav_dash"></a>
-      <a href="#/screening" data-route="screening" data-i18n="nav_screen"></a>
-      <a href="#/changelog" data-route="changelog" data-i18n="nav_log"></a>
-      <a href="#/sources" data-route="sources" data-i18n="nav_sources"></a>
-    </nav>
-    <div class="top-right">
-      <span class="updated" id="updated" title=""></span>
-      <button class="hbtn" id="themeToggle" type="button" aria-label="Toggle theme"></button>
-      <button class="hbtn" id="langToggle" type="button" aria-label="Switch language">EN</button>
+    <div class="row1">
+      <a class="brand" href="#/dashboard">
+        <svg width="22" height="22" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true">
+          <circle cx="24" cy="24" r="19"/>
+          <path d="M24 5v38"/>
+          <ellipse cx="24" cy="24" rx="10" ry="19"/>
+          <path d="M9 13.5Q24 9.5 39 13.5"/>
+          <path d="M9 34.5Q24 38.5 39 34.5"/>
+          <path d="M5.5 24C11.5 19 17.5 17 24 17s12.5 2 18.5 7C36 29 30.5 31 24 31s-12.5-2-18.5-7Z" fill="#0F172A"/>
+          <circle cx="24" cy="24" r="4.6" fill="currentColor" stroke="none"/>
+        </svg>
+        <span class="brand-name">Sanctions<b>Watch</b></span>
+      </a>
+      <span class="sp"></span>
+      <div class="top-right">
+        <span class="updated" id="updated" title=""></span>
+        <button class="hbtn" id="themeToggle" type="button" aria-label="Toggle theme"></button>
+        <button class="hbtn" id="langToggle" type="button" aria-label="Switch language">EN</button>
+      </div>
+    </div>
+    <div class="navwrap" id="navwrap">
+      <nav class="nav" id="nav">
+        <a href="#/dashboard" data-route="dashboard" data-i18n="nav_dash"></a>
+        <a href="#/screening" data-route="screening" data-i18n="nav_screen"></a>
+        <a href="#/changelog" data-route="changelog" data-i18n="nav_log"></a>
+        <a href="#/sources" data-route="sources" data-i18n="nav_sources"></a>
+      </nav>
     </div>
   </div>
 </header>
@@ -149,6 +154,6 @@
   <span class="muted" id="footGen"></span>
 </footer>
 
-<script src="app.js?v=202611200930"></script>
+<script src="app.js?v=202611201600"></script>
 </body>
 </html>
