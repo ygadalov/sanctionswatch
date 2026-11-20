@@ -37,7 +37,7 @@ const I18N = {
     q_ph: "Имя, компания, судно, ИНН, IMO…",
     all_sources: "Все источники", all_types: "Все типы",
     log_title: "Журнал изменений списков",
-    log_hint: "Каждое обновление пайплайна фиксирует, какие записи добавлены или удалены в каждом источнике. Это основа аудит-трейла.",
+    log_hint: "Каждое обновление пайплайна фиксирует, какие записи добавлены или удалены в каждом источнике. Это основа аудит-трейла. Полный перечень имён — в выгрузке CSV.",
     src_title: "Источники данных",
     src_note: "US (SDN + Consolidated non-SDN) / UK / UN загружаются напрямую из официальных реестров. EU / AU / JP / CA / CH — через нормализацию OpenSanctions (обновляется ежедневно из официальных списков). Скрининг для юридически значимых решений сверяйте с первоисточником.",
     foot_data: "Данные: OFAC · FCDO · ЕС · ООН · GAC · SECO · DFAT · MOF. Обновление ежедневно ночью (МСК).",
@@ -92,7 +92,7 @@ const I18N = {
     q_ph: "Name, company, vessel, tax ID, IMO…",
     all_sources: "All sources", all_types: "All types",
     log_title: "List changelog",
-    log_hint: "Every pipeline run records which entries were added or removed in each source. This is the audit-trail foundation.",
+    log_hint: "Every pipeline run records which entries were added or removed in each source. This is the audit-trail foundation. The CSV export contains the full list of names.",
     src_title: "Data sources",
     src_note: "US (SDN + Consolidated non-SDN) / UK / UN are fetched directly from official registers. EU / AU / JP / CA / CH come via OpenSanctions normalization (updated daily from official lists). For legally significant decisions, verify against the primary source.",
     foot_data: "Data: OFAC · FCDO · EU · UN · GAC · SECO · DFAT · MOF. Refreshed nightly (MSK).",
@@ -952,9 +952,6 @@ async function renderChangelog() {
     const lines = txt.trim().split("\n").filter(Boolean).map(JSON.parse).reverse();
     CHANGELOG = lines;
     if (!lines.length) { box.innerHTML = `<div class="empty">—</div>`; return; }
-    const names10 = (list, count, cls) => list && list.length
-      ? `<div class="cl-names">${list.slice(0, 10).map((a) => esc(a.name || a.id)).join("<br>")}${count > 10 ? `<br>…${cls === "rem" ? "−" : "+"}${count - 10}` : ""}</div>`
-      : "";
     box.innerHTML = lines.map((en) => {
       const dt = new Date(en.ts).toLocaleString(LANG === "ru" ? "ru-RU" : "en-GB");
       const body = en.initial
@@ -962,9 +959,7 @@ async function renderChangelog() {
         : Object.entries(en.changes).map(([src, c]) => `
             <div class="cl-src"><b>${src}</b>:
               <span class="cnt add">+${c.added_count} ${t("added")}</span> ·
-              <span class="cnt rem">−${c.removed_count} ${t("removed")}</span></div>
-            ${names10(c.added, c.added_count, "add")}
-            ${names10(c.removed, c.removed_count, "rem")}`)
+              <span class="cnt rem">−${c.removed_count} ${t("removed")}</span></div>`)
           .join("");
       return `<div class="cl-entry"><div class="cl-date">${dt}</div>${body}</div>`;
     }).join("");

@@ -276,7 +276,7 @@ PROGRAM_GROUPS = [
     ("Китай / Синьцзян / Гонконг", r"XINJIANG|HONG KONG|HK-EO|CHINA|XPCC|CMIC"),
     ("Балканы", r"BALKAN|BOSNIA|SERBIA|KOSOVO"),
     ("Никарагуа", r"NICARAGUA|\bNIC\b"),
-    ("Зимбабве", r"Зимбабве".replace('Зимбабве','ZIMBABWE') + r"|\bZIM\b"),
+    ("Зимбабве", r"ZIMBABWE|\bZIM\b"),
     ("Африка (Мали, ЦАР, Конго)", r"MALI|CAR\b|CENTRAL AFRICAN|DRCONGO|\bCOD\b|CONGO"),
     ("Непролиферация", r"NPWMD|WMD|PROLIF|ITSR"),
     ("Морские / теневой флот", r"PIRACY|MARITIME|\(VESSELS\)|VESSELS\) -"),
