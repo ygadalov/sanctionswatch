@@ -16,7 +16,7 @@ const GRP_EN = {
 };
 const I18N = {
   ru: {
-    nav_dash: "Дашборд", nav_screen: "Скрининг", nav_log: "Изменения", nav_sources: "Источники",
+    nav_dash: "Обзор", nav_screen: "Скрининг", nav_log: "Изменения", nav_sources: "Источники",
     map_title: "География санкций",
     map_hint: "Страна = гражданство/регистрация субъекта (не страна-инициатор санкций). Насыщенность — число субъектов, логарифмическая шкала. Клик по стране — фильтр всего дашборда.",
     by_country: "Топ стран по числу записей",
@@ -73,7 +73,7 @@ const I18N = {
     click_to_filter: "клик — фильтр",
   },
   en: {
-    nav_dash: "Dashboard", nav_screen: "Screening", nav_log: "Changelog", nav_sources: "Sources",
+    nav_dash: "Overview", nav_screen: "Screening", nav_log: "Changelog", nav_sources: "Sources",
     map_title: "Sanctions geography",
     map_hint: "Country = subject's citizenship/registration (not the sanctioning state). Intensity = number of subjects, log scale. Click a country to filter the whole dashboard.",
     by_country: "Top countries by entries",
