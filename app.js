@@ -270,11 +270,20 @@ function computeStats(recs) {
       byMeasure[m] = (byMeasure[m] || 0) + 1;
     uniq.add(e.key + "|" + (e.dob || ""));
   }
+  const byYearOff = {}, byYearOs = {};
+  for (const e of recs) {
+    if (!e.listed_on) continue;
+    const y = e.listed_on.slice(0, 4);
+    (e.listed_on_kind === "official" ? byYearOff : byYearOs)[y] =
+      ((e.listed_on_kind === "official" ? byYearOff : byYearOs)[y] || 0) + 1;
+  }
+  const sortY = (o) => Object.fromEntries(Object.entries(o).sort((a, b) => a[0].localeCompare(b[0])));
   const sort = (o) => Object.fromEntries(Object.entries(o).sort((a, b) => b[1] - a[1]));
   return { total: recs.length, unique_subjects: uniq.size,
     by_source: sort(bySource), by_type: sort(byType),
     by_country: sort(byCountry), by_program: sort(byProgram),
     by_measure: sort(byMeasure),
+    by_year_official: sortY(byYearOff), by_year_os: sortY(byYearOs),
     sources: STATS.sources, generated_at: STATS.generated_at };
 }
 
@@ -320,6 +329,7 @@ function route() {
   const view = ROUTES.includes(r) ? r : "dashboard";
   ROUTES.forEach((x) => document.getElementById("view-" + x).classList.toggle("active", x === view));
   document.querySelectorAll(".nav a").forEach((a) => a.classList.toggle("active", a.dataset.route === view));
+  syncNavScroll();
   if (view === "changelog") renderChangelog();
   if (view === "screening") {
     // сквозные фильтры дашборда → селекты скрининга
@@ -329,6 +339,16 @@ function route() {
   window.scrollTo(0, 0);
 }
 window.addEventListener("hashchange", route);
+
+// плашка разделов: тени-намёки, когда не влезает, и докрутка до активной вкладки
+function syncNavScroll() {
+  const nav = document.getElementById("nav"), wrap = document.getElementById("navwrap");
+  if (!nav || !wrap) return;
+  wrap.classList.toggle("scr", nav.scrollWidth > nav.clientWidth + 2);
+  const act = nav.querySelector("a.active");
+  if (act) act.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
+}
+window.addEventListener("resize", syncNavScroll);
 
 /* ---------- dashboard ---------- */
 const fmt = new Intl.NumberFormat("ru-RU");
@@ -450,8 +470,9 @@ function renderDashboard() {
         const offH = sum ? (o / sum) * 100 : 0;
         // подпись — на круглых годах; последний год — только если не слипается с круглой подписью
         const showLab = (+y % 5 === 0) || (+y === lastY && lastY - lastLabeled > 2);
+        const kv = sum >= 1000 ? (Math.round(sum / 100) / 10).toString().replace(".", LANG === "ru" ? "," : ".") + "k" : (sum || "");
         return `<div class="ycol" title="${y}: ${t("years_official")} — ${fmt.format(o)}; ${t("years_os")} — ${fmt.format(p)}">
-          <div class="ybars"><div class="ybar" style="height:${bh}%">
+          <div class="ybars"><div class="yval" style="bottom:calc(${bh}% + 2px)">${kv}</div><div class="ybar" style="height:${bh}%">
             <div class="yseg os" style="height:${100 - offH}%"></div>
             <div class="yseg off" style="height:${offH}%"></div>
           </div></div>
