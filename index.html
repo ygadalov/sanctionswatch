@@ -7,8 +7,8 @@
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link rel="preload" href="fonts/inter-cyrillic.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="fonts.css?v=202611210737">
-<link rel="stylesheet" href="styles.css?v=202611210737">
+<link rel="stylesheet" href="fonts.css?v=202611212304">
+<link rel="stylesheet" href="styles.css?v=202611212304">
 </head>
 <body>
 <header class="top">
@@ -37,6 +37,7 @@
       <nav class="nav" id="nav">
         <a href="#/dashboard" data-route="dashboard" data-i18n="nav_dash"></a>
         <a href="#/screening" data-route="screening" data-i18n="nav_screen"></a>
+        <a href="#/batch" data-route="batch" data-i18n="nav_batch"></a>
         <a href="#/changelog" data-route="changelog" data-i18n="nav_log"></a>
         <a href="#/sources" data-route="sources" data-i18n="nav_sources"></a>
       </nav>
@@ -129,6 +130,44 @@
     </div>
   </section>
 
+  <!-- BATCH -->
+  <section id="view-batch" class="view">
+    <div class="panel" id="bUploadPanel">
+      <h2 class="panel-title" data-i18n="b_title"></h2>
+      <p class="muted" data-i18n="b_hint"></p>
+      <div class="b-drop" id="bDrop" tabindex="0" role="button">
+        <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4m0 0l-4 4m4-4l4 4"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
+        <div class="b-drop-t" data-i18n="b_drop"></div>
+        <div class="muted small" data-i18n="b_drop_sub"></div>
+        <input type="file" id="bFile" accept=".xlsx,.xls,.csv" hidden>
+      </div>
+      <p class="b-tpl"><button type="button" class="btn" id="bTpl" data-i18n="b_tpl"></button></p>
+      <p class="muted small" data-i18n="b_privacy"></p>
+    </div>
+
+    <div class="panel" id="bMapPanel" hidden>
+      <h2 class="panel-title" data-i18n="b_map_title"></h2>
+      <p class="muted" id="bFileInfo"></p>
+      <div class="b-map" id="bMap"></div>
+      <div class="tblwrap b-preview"><table class="tbl" id="bPreview"></table></div>
+      <p class="b-actions">
+        <button type="button" class="btn btn-primary" id="bRun" data-i18n="b_run"></button>
+        <button type="button" class="btn" id="bBack" data-i18n="b_back"></button>
+      </p>
+    </div>
+
+    <div class="panel" id="bResPanel" hidden>
+      <h2 class="panel-title" data-i18n="b_res_title"></h2>
+      <div class="b-sum" id="bSum"></div>
+      <p class="b-actions">
+        <button type="button" class="btn btn-primary" id="bExport" data-i18n="b_export"></button>
+        <button type="button" class="btn" id="bAgain" data-i18n="b_again"></button>
+      </p>
+      <div class="b-resfilter" id="bResFilter"></div>
+      <div class="tblwrap"><table class="tbl b-restbl" id="bResTable"></table></div>
+    </div>
+  </section>
+
   <!-- CHANGELOG -->
   <section id="view-changelog" class="view">
     <div class="panel">
@@ -154,6 +193,7 @@
   <span class="muted" id="footGen"></span>
 </footer>
 
-<script src="app.js?v=202611210737"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="app.js?v=202611212304"></script>
 </body>
 </html>
