@@ -528,3 +528,937 @@ function renderDashboard() {
   } else {
     mc.innerHTML = `<span class="muted small">${t("filters_loading")}…</span>`;
   }
+
+  // listings by year: официальные даты (UK/UN) + прокси first_seen (остальные)
+  const yc = document.getElementById("yearChart");
+  if (yc && (s.by_year_official || s.by_year_os)) {
+    const off = s.by_year_official || {}, os = s.by_year_os || {};
+    const years = [...new Set([...Object.keys(off), ...Object.keys(os)])].sort();
+    const tot = (y) => (off[y] || 0) + (os[y] || 0);
+    const max = Math.max(1, ...years.map(tot));
+    const lastY = +years[years.length - 1];
+    const lastLabeled = Math.floor(lastY / 5) * 5; // ближайший «круглый» год снизу
+    yc.innerHTML =
+      `<div class="ygrid">` + years.map((y) => {
+        const o = off[y] || 0, p = os[y] || 0, sum = o + p;
+        const bh = Math.sqrt(sum / max) * 100; // sqrt-шкала: 2023 не забивает мелкие годы
+        const offH = sum ? (o / sum) * 100 : 0;
+        // подпись — на круглых годах; последний год — только если не слипается с круглой подписью
+        const showLab = (+y % 5 === 0) || (+y === lastY && lastY - lastLabeled > 2);
+        const kv = sum >= 1000 ? (Math.round(sum / 100) / 10).toString().replace(".", LANG === "ru" ? "," : ".") + "k" : (sum || "");
+        return `<div class="ycol" title="${y}: ${t("years_official")} — ${fmt.format(o)}; ${t("years_os")} — ${fmt.format(p)}">
+          <div class="ybars"><div class="yval" style="bottom:calc(${bh}% + 2px)">${kv}</div><div class="ybar" style="height:${bh}%">
+            <div class="yseg os" style="height:${100 - offH}%"></div>
+            <div class="yseg off" style="height:${offH}%"></div>
+          </div></div>
+          <div class="ytick${showLab ? " big" : ""}"></div>
+          <div class="ylab">${showLab ? y : ""}</div>
+        </div>`;
+      }).join("") +
+      `</div>
+       <div class="ylegend">
+         <span><i class="ysw off"></i>${t("years_official")}</span>
+         <span><i class="ysw os"></i>${t("years_os")}</span>
+       </div>`;
+  }
+
+  renderMap(s);
+}
+
+/* ---------- world map ---------- */
+let GEO = null;
+const mapState = { counts: {}, max: 1 };
+function proj(lon, lat) {
+  return [((lon + 180) / 360) * 1000, ((85 - lat) / 145) * 470];
+}
+function ringToPath(ring) {
+  let d = "";
+  for (let i = 0; i < ring.length; i++) {
+    const [x, y] = proj(ring[i][0], ring[i][1]);
+    d += (i ? "L" : "M") + x.toFixed(1) + " " + y.toFixed(1);
+  }
+  return d + "Z";
+}
+function geomToPath(g) {
+  if (!g) return "";
+  if (g.type === "Polygon") return g.coordinates.map(ringToPath).join("");
+  if (g.type === "MultiPolygon") return g.coordinates.map((p) => p.map(ringToPath).join("")).join("");
+  return "";
+}
+async function loadGeo() {
+  if (GEO) return GEO;
+  GEO = await (await fetch("data/countries.geo.json")).json();
+  return GEO;
+}
+function mapFill(n) {
+  if (!n) return { cls: "d0", op: null };
+  const tt = Math.log10(n + 1) / Math.log10(mapState.max + 1);
+  return { cls: "dn", op: (0.18 + 0.82 * tt).toFixed(2) };
+}
+async function renderMap(s) {
+  const svg = document.getElementById("worldmap");
+  const tip = document.getElementById("mapTip");
+  await loadGeo();
+  mapState.counts = s.by_country || {};
+  mapState.max = Math.max(1, ...Object.entries(mapState.counts)
+    .filter(([k]) => k.length === 2 && k !== "ZZ").map(([, v]) => v));
+  document.getElementById("mapMax").textContent = fmt.format(mapState.max);
+  svg.classList.toggle("filterable", interactive());
+  svg.classList.toggle("hascountry", !!FILTERS.country); // выбранная страна: яркая заливка, остальные приглушены
+  svg.innerHTML = GEO.features.map((f) => {
+    const iso = f.properties.iso2;
+    const n = iso ? (mapState.counts[iso] || 0) : 0;
+    const fl = mapFill(n);
+    const sel = FILTERS.country && FILTERS.country === iso ? " on" : "";
+    return `<path class="${fl.cls}${sel}"${fl.op ? ` fill-opacity="${fl.op}"` : ""}
+      data-iso="${iso || ""}" data-name="${esc(f.properties.name)}" data-n="${n}"
+      d="${geomToPath(f.geometry)}"/>`;
+  }).join("");
+
+  svg.querySelectorAll("path").forEach((p) => {
+    p.addEventListener("mousemove", (ev) => {
+      const iso = p.dataset.iso;
+      if (!iso) return;
+      p.classList.add("hover");
+      const wrap = svg.closest(".mapwrap").getBoundingClientRect();
+      const n = +p.dataset.n;
+      tip.innerHTML = `<div class="tt-name">${esc(countryName(iso) !== iso ? countryName(iso) : p.dataset.name)} <span class="muted">${iso}</span></div>
+        <span class="tt-n">${fmt.format(n)}</span> ${t("total").toLowerCase()}
+        ${interactive() ? `<div class="tt-hint">${t("click_to_filter")}</div>` : ""}`;
+      tip.style.display = "block";
+      let tx = ev.clientX - wrap.left + 14, ty = ev.clientY - wrap.top + 12;
+      if (tx + 250 > wrap.width) tx -= 270;
+      if (ty + 90 > wrap.height) ty -= 100;
+      tip.style.left = tx + "px"; tip.style.top = ty + "px";
+    });
+    p.addEventListener("mouseleave", () => { p.classList.remove("hover"); tip.style.display = "none"; });
+    if (interactive())
+      p.addEventListener("click", () => {
+        tip.style.display = "none";
+        if (p.dataset.iso) setFilter("country", p.dataset.iso);
+      });
+  });
+}
+
+/* ---------- normalization & matching ---------- */
+const CYR2LAT = {
+  а:"a",б:"b",в:"v",г:"g",д:"d",е:"e",ё:"e",ж:"zh",з:"z",и:"i",й:"y",к:"k",л:"l",м:"m",
+  н:"n",о:"o",п:"p",р:"r",с:"s",т:"t",у:"u",ф:"f",х:"kh",ц:"ts",ч:"ch",ш:"sh",щ:"shch",
+  ъ:"",ы:"y",ь:"",э:"e",ю:"yu",я:"ya",
+};
+function translit(s) {
+  return s.split("").map((c) => CYR2LAT[c] || c).join("");
+}
+function norm(s) {
+  return (s || "").toLowerCase().normalize("NFKD")
+    .replace(/[\u0300-\u036F]/g, "").replace(/[^a-z0-9\u0400-\u04FF]+/g, " ").trim();
+}
+function tokens(s) { return norm(s).split(" ").filter((w) => w.length > 1); }
+
+function levenshtein(a, b) {
+  if (Math.abs(a.length - b.length) > 2) return 99;
+  const m = a.length, n = b.length;
+  if (!m || !n) return Math.max(m, n);
+  let prev = Array.from({ length: n + 1 }, (_, i) => i);
+  for (let i = 1; i <= m; i++) {
+    const cur = [i];
+    for (let j = 1; j <= n; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    prev = cur;
+  }
+  return prev[n];
+}
+
+function numTokens(s) { return norm(s).match(/\d+/g) || []; }
+function tokenScore(qt, et) {
+  if (qt === et) return 1;
+  // префиксный бонус — только для токенов от 4 букв (иначе «as» матчится с «astrol»)
+  if ((et.startsWith(qt) || qt.startsWith(et)) && Math.min(qt.length, et.length) >= 4) return 0.85;
+  const d = levenshtein(qt, et);
+  const mx = Math.max(qt.length, et.length);
+  if (mx >= 5 && d <= 1) return 0.75;
+  if (mx >= 7 && d <= 2) return 0.6;
+  return 0;
+}
+
+function scoreVariants(tokenSets, qNorm, variants) {
+  let best = 0;
+  const qNums = numTokens(qNorm); // числа в запросе — различитель «Астрол-1» vs «Астрол-2»
+  for (const v of variants) {
+    const et = tokens(v);
+    if (!et.length) continue;
+    const vNorm = norm(v);
+    const vNums = numTokens(vNorm);
+    // число из запроса не подтверждено именем записи (нет или другое) → это, скорее всего,
+    // другой объект: кап в зону ручной проверки. Лишние числа в имени записи не штрафуются.
+    const numClash = qNums.length && qNums.some((n) => !vNums.includes(n));
+    for (const qTokens of tokenSets) {
+      if (!qTokens.length) continue;
+      let sum = 0;
+      for (const qt of qTokens) {
+        let b = 0;
+        for (const tok of et) b = Math.max(b, tokenScore(qt, tok));
+        sum += b;
+      }
+      let s = sum / qTokens.length;
+      if (vNorm === qNorm) s = 1;
+      else if (vNorm.includes(qNorm) && qNorm.length > 3) s = Math.max(s, 0.9);
+      if (numClash) s = Math.min(s, 0.65);
+      best = Math.max(best, s);
+    }
+    if (best === 1) break;
+  }
+  return best;
+}
+
+function scoreEntity(tokenSets, qNorm, entity) {
+  const strong = [entity.name, ...(entity.aliases || []).slice(0, 6)];
+  let best = scoreVariants(tokenSets, qNorm, strong);
+  // weak-aka OFAC: совпадение возможно, но ограничено 0.6 и помечается в карточке
+  const weak = (entity.weak_aliases || []).slice(0, 6);
+  const bestWeak = weak.length ? scoreVariants(tokenSets, qNorm, weak) : 0;
+  entity._weakm = bestWeak > best && bestWeak >= 0.5;
+  if (bestWeak > best) best = Math.min(bestWeak, 0.6);
+  const idq = qNorm.replace(/\s+/g, "");
+  if (idq.length > 4 && (entity.identifiers || []).some((i) => norm(i).replace(/\s+/g, "").includes(idq)))
+    best = Math.max(best, 0.95);
+  return best;
+}
+
+/* ---------- cross-list xref & identifier completeness ---------- */
+let XL = null; // key|year -> Set(sources)
+function dobYear(e) { const m = (e.dob || "").match(/(\d{4})/); return m ? m[1] : ""; }
+function buildXref() {
+  XL = new Map();
+  for (const e of ALL) {
+    const k = e.key + "|" + dobYear(e);
+    if (!XL.has(k)) XL.set(k, new Set());
+    XL.get(k).add(e.source);
+  }
+}
+function xlists(e) {
+  if (!XL) return 1;
+  const s = XL.get(e.key + "|" + dobYear(e));
+  return s ? s.size : 1;
+}
+function idFlags(e) {
+  const ids = (e.identifiers || []).join(" ").toLowerCase();
+  return {
+    dob: !!e.dob,
+    doc: /passport|document|national id|id no|identification(?!: imo)|cedula|dpi/.test(ids) && !/vessel registration/.test(ids),
+    tax: /fiscal|tax|inn|tin|инн/.test(ids),
+    imo: /imo\s*\d/.test(ids),
+  };
+}
+function pluralLists(n) {
+  if (LANG === "en") return n === 1 ? "list" : "lists";
+  const m10 = n % 10, m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return "список";
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return "списка";
+  return "списков";
+}
+
+/* ---------- screening ---------- */
+const qEl = document.getElementById("q");
+const metaEl = document.getElementById("searchMeta");
+const resEl = document.getElementById("results");
+const detEl = document.getElementById("detail");
+let results = [];
+let selected = -1;
+let searchSeq = 0;
+
+const advEls = {
+  year: document.getElementById("advYear"),
+  dob: document.getElementById("advDob"),
+  country: document.getElementById("advCountry"),
+  doc: document.getElementById("advDoc"),
+  imo: document.getElementById("advImo"),
+};
+/* --- даты рождения: нормализация форматов источников и ввода --- */
+const MONTHS3 = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+function parseDobQuery(s) {
+  s = (s || "").trim();
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);              // ISO: 1966-03-25
+  if (m) return { y: +m[1], mo: +m[2], d: +m[3] };
+  m = s.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})$/);            // ДД.ММ.ГГГГ (ru) / MM/DD/YYYY (en)
+  if (m) {
+    const a = +m[1], b = +m[2];
+    const [d, mo] = LANG === "en" ? [b, a] : [a, b];
+    if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31) return { y: +m[3], mo, d };
+  }
+  return null;
+}
+function dobCandidates(dob) { // все полные даты, встречающиеся в строке dob записи
+  const out = [];
+  const s = dob || "";
+  for (const m of s.matchAll(/(\d{4})-(\d{2})-(\d{2})/g)) out.push({ y: +m[1], mo: +m[2], d: +m[3] });
+  for (const m of s.matchAll(/(\d{1,2})[./](\d{1,2})[./](\d{4})/g)) out.push({ y: +m[3], mo: +m[2], d: +m[1] });
+  for (const m of s.matchAll(/(\d{1,2})\s+([A-Za-z]{3,})\w*\.?,?\s+(\d{4})/g)) {
+    const mo = MONTHS3[m[2].slice(0, 3).toLowerCase()];
+    if (mo) out.push({ y: +m[3], mo, d: +m[1] });
+  }
+  return out;
+}
+function readAdv() {
+  return {
+    year: (advEls.year.value.match(/\d{4}/) || [""])[0],
+    dob: parseDobQuery(advEls.dob.value),
+    country: advEls.country.value,
+    doc: norm(advEls.doc.value).replace(/[^a-z0-9\u0400-\u04FF]/g, ""),
+    imo: alnum(advEls.imo.value).slice(0, 10), // IMO судна или бортовой/серийный № самолёта (буквы+цифры)
+  };
+}
+function advCount(a) { return (a.year ? 1 : 0) + (a.dob ? 1 : 0) + (a.country ? 1 : 0) + (a.doc ? 1 : 0) + (a.imo ? 1 : 0); }
+function alnum(x) { return norm(x).replace(/[^a-z0-9\u0400-\u04FF]/g, ""); }
+
+async function search(query) {
+  const seq = ++searchSeq;
+  const qNorm0 = norm(query);
+  const adv = readAdv();
+  const hasAdv = advCount(adv) > 0;
+  if (qNorm0.length < 2 && !hasAdv) {
+    results = []; selected = -1;
+    renderResults(); renderDetail();
+    metaEl.textContent = "";
+    resEl.innerHTML = `<div class="empty"><div>${t("type_q")}</div></div>`;
+    return;
+  }
+  metaEl.textContent = t("searching");
+  let pool;
+  try {
+    pool = await loadAll((f) => { if (seq === searchSeq) metaEl.textContent = `${t("searching")} ${Math.round(f * 100)}%`; });
+    ALL = pool; XL = null; buildXref(); fillAdvCountries(); // фильтры дашборда тоже получают данные
+    if (seq === searchSeq) renderDashboard();
+  } catch {
+    metaEl.textContent = "data load error";
+    return;
+  }
+  if (seq !== searchSeq) return;
+
+  const fSrc = document.getElementById("fSource").value;
+  const fTyp = document.getElementById("fType").value;
+  if (fSrc) pool = pool.filter((e) => e.source === fSrc);
+  if (fTyp) pool = pool.filter((e) => e.type === fTyp);
+
+  // --- уточняющие фильтры (жёсткие) ---
+  if (adv.country) pool = pool.filter((e) => (e.countries || []).includes(adv.country));
+  if (adv.imo) pool = pool.filter((e) => (e.identifiers || []).some((i) => alnum(i).includes(adv.imo)));
+  if (adv.doc) pool = pool.filter((e) => (e.identifiers || []).some((i) => alnum(i).includes(adv.doc)));
+  if (adv.year) pool = pool.filter((e) => {
+    const ys = (e.dob || "").match(/\d{4}/g);
+    return !ys || ys.includes(adv.year); // без даты рождения запись не отсекаем
+  });
+  if (adv.dob) pool = pool.filter((e) => {
+    const c = dobCandidates(e.dob);
+    if (c.length) return c.some((x) => x.y === adv.dob.y && x.mo === adv.dob.mo && x.d === adv.dob.d);
+    const ys = (e.dob || "").match(/\d{4}/g); // в записи только год — сверяем год
+    return !ys || ys.includes(String(adv.dob.y));
+  });
+  const idMatched = new Set();
+  if (adv.imo || adv.doc) pool.forEach((e) => idMatched.add(e));
+
+  // --- поиск только по уточняющим полям (без имени) ---
+  if (qNorm0.length < 2) {
+    results = pool.slice(0, 100).map((e) => [idMatched.has(e) ? 1 : 0.85, e]);
+    results.forEach(([, e]) => { e._idm = idMatched.has(e); });
+    selected = results.length ? 0 : -1;
+    renderResults(); renderDetail();
+    metaEl.textContent = `${results.length}${pool.length > 100 ? "+" : ""} ${t("results_n")}`;
+    return;
+  }
+
+  const qNorm = norm(query);
+  const tokenSets = [tokens(qNorm)];
+  const latTokens = tokens(translit(qNorm));
+  if (latTokens.join(" ") !== tokenSets[0].join(" ")) tokenSets.push(latTokens);
+
+  const idq = qNorm0.replace(/\s+/g, "");
+  const prefilter = (e) => {
+    if (idq.length > 4 && (e.identifiers || []).some((i) => norm(i).replace(/\s+/g, "").includes(idq)))
+      return true;
+    const hay = e.key + " " + (e.aliases || []).slice(0, 6).map(norm).join(" ") + " " +
+      (e.weak_aliases || []).slice(0, 4).map(norm).join(" ");
+    for (const set of tokenSets)
+      for (const qt of set)
+        if (hay.includes(qt)) return true;
+    for (const set of tokenSets)
+      for (const qt of set)
+        for (const tok of e.key.split(" "))
+          if (tok[0] === qt[0] && Math.abs(tok.length - qt.length) <= 2) return true;
+    return false;
+  };
+
+  const scored = [];
+  for (const e of pool) {
+    if (!prefilter(e)) continue;
+    let s = scoreEntity(tokenSets, qNorm, e);
+    e._idm = idMatched.has(e);
+    if (e._idm) s = Math.max(s, 0.99); // точное по идентификатору — наверх
+    if (s >= 0.5) scored.push([s, e]);
+  }
+  scored.sort((a, b) => b[0] - a[0]);
+  results = scored.slice(0, 100);
+  selected = results.length ? 0 : -1;
+  renderResults();
+  renderDetail();
+  metaEl.textContent = `${results.length} ${t("results_n")}`;
+}
+
+function renderResults() {
+  if (!results.length) {
+    if (norm(qEl.value).length >= 2)
+      resEl.innerHTML = `<div class="empty"><div>${t("no_results")}</div></div>`;
+    return;
+  }
+  resEl.innerHTML = results.map(([s, e], i) => {
+    const sc = Math.round(s * 100);
+    const cls = sc >= 85 ? "hi" : sc >= 65 ? "md" : "lo";
+    const type = t("t_" + e.type) || e.type;
+    const sub = [type, (e.countries || []).join(" · "), e.dob].filter(Boolean).join(" · ");
+    const xl = xlists(e);
+    const f = idFlags(e);
+    const L = LANG === "en" ? ["DOB", "DOC", "TAX"] : ["ДР", "ДОК", "ИНН"];
+    const idb = e.type === "vessel"
+      ? `<span class="idb"><span class="${f.imo ? "y" : ""}">IMO</span><span class="${f.tax ? "y" : ""}">${L[2]}</span></span>`
+      : `<span class="idb"><span class="${f.dob ? "y" : ""}">${L[0]}</span><span class="${f.doc ? "y" : ""}">${L[1]}</span><span class="${f.tax ? "y" : ""}">${L[2]}</span></span>`;
+    return `<div class="r-row ${i === selected ? "sel" : ""}" data-i="${i}" role="option" tabindex="-1">
+      <span class="badge">${e.source}</span>
+      <span><div class="nm">${esc(e.name)}</div>
+      <div class="sub">${esc(sub)}</div></span>
+      <span class="xmeta">${(e.measures || []).includes("non_sdn") ? `<span class="xlists nonsdn">non-SDN</span>` : ""}<span class="xlists${xl >= 3 ? " hot" : ""}"><b>${xl}</b> ${pluralLists(xl)}</span>${idb}</span>
+      <span class="score ${cls}">${sc}%</span></div>`;
+  }).join("");
+  resEl.querySelectorAll(".r-row").forEach((r) =>
+    r.addEventListener("click", () => { selected = +r.dataset.i; renderResults(); renderDetail(); }));
+}
+
+function extLinks(e) {
+  // внешние базы по номеру: IMO для судов, бортовой номер для самолётов
+  const ids = (e.identifiers || []).join("\n");
+  const out = [];
+  if (e.type === "vessel") {
+    const m = ids.match(/imo[:\s]*(\d{7})/i);
+    if (m) {
+      const imo = m[1];
+      out.push(["MarineTraffic", `https://www.marinetraffic.com/en/ais/details/ships/imo:${imo}`]);
+      out.push(["VesselFinder", `https://www.vesselfinder.com/vessels/details/${imo}`]);
+      out.push(["BalticShipping", `https://www.balticshipping.com/vessel/imo/${imo}`]);
+    }
+  }
+  if (e.type === "aircraft") {
+    const t = ids.match(/tail number[:\s]*([A-Z0-9][A-Z0-9-]{2,9})/i);
+    const nm = (e.name || "").match(/^([A-Z0-9]{1,2}-[A-Z0-9]{2,6})$/);
+    const reg = (t ? t[1] : nm ? nm[1] : "").toLowerCase();
+    if (reg) {
+      out.push(["FlightRadar24", `https://www.flightradar24.com/data/aircraft/${reg}`]);
+      out.push(["Planespotters", `https://www.planespotters.net/search?q=${reg}`]);
+      out.push(["FlightAware", `https://www.flightaware.com/resources/registration/${reg.toUpperCase()}`]);
+    }
+  }
+  return out;
+}
+function renderDetail() {
+  const searched = norm(qEl.value).length >= 2 || advCount(readAdv()) > 0;
+  if ((selected < 0 || !results[selected]) && searched) {
+    detEl.innerHTML = `<div class="empty"><div>${t("no_results")}</div></div><div class="warn" style="margin-top:14px">${t("no_results_sub")}</div>`;
+    return;
+  }
+  if (selected < 0 || !results[selected]) {
+    detEl.innerHTML = `<div class="empty">${t("select_hint")}</div>`;
+    return;
+  }
+  const [score, e] = results[selected];
+  const srcName = (STATS.sources[e.source] || {}).name || e.source;
+  const ext = extLinks(e);
+  const ms = (e.measures && e.measures.length ? e.measures : ["blocking"]);
+  detEl.innerHTML = `
+    <h3>${esc(e.name)}</h3>
+    <div class="d-sub">${e.id} · ${Math.round(score * 100)}%</div>
+    <div class="mchips" style="margin:8px 0 2px">${ms.map((m) =>
+      `<span class="mchip ${m === "blocking" ? "block" : "nonsdn"}">${t("m_" + m).replace(/^· /, "")}</span>`).join("")}</div>
+    <div class="d-sec"><h4>${t("d_type")}</h4><div class="val">${t("t_" + e.type) || e.type}</div></div>
+    <div class="d-sec"><h4>${t("d_source")}</h4><div class="val">${esc(srcName)}</div></div>
+    ${e.dob ? `<div class="d-sec"><h4>${t("d_dob")}</h4><div class="mono">${esc(e.dob)}</div></div>` : ""}
+    ${e.listed_on ? `<div class="d-sec"><h4>${e.listed_on_kind === "os" ? t("d_listed_os") : t("d_listed")}</h4><div class="mono">${esc(e.listed_on)}</div></div>` : ""}
+    ${(e.countries || []).length ? `<div class="d-sec"><h4>${t("d_countries")}</h4><div>${e.countries.map((c) => `<span class="tag ct">${esc(c)}</span>`).join("")}</div></div>` : ""}
+    ${(e.programs || []).length ? `<div class="d-sec"><h4>${t("d_programs")}</h4><div>${e.programs.map((p) => `<span class="tag">${esc(p)}</span>`).join("")}</div></div>` : ""}
+    ${(e.identifiers || []).length ? `<div class="d-sec"><h4>${t("d_ids")}</h4><div class="mono">${e.identifiers.map(esc).join("<br>")}</div></div>` : ""}
+    ${ext.length ? `<div class="d-sec"><h4>${t("d_extcheck")}</h4><div class="extlinks">${ext.map(([n, u]) => `<a class="extlink" href="${u}" target="_blank" rel="noopener">${n} ↗</a>`).join("")}</div><div class="muted small" style="margin-top:6px">${t("d_extcheck_note")}</div></div>` : ""}
+    ${(e.aliases || []).length ? `<div class="d-sec"><h4>${t("d_aliases")}</h4><div class="mono">${e.aliases.slice(0, 12).map(esc).join("<br>")}${e.aliases.length > 12 ? `<br><span class="muted">…+${e.aliases.length - 12}</span>` : ""}</div></div>` : ""}
+    ${(e.weak_aliases || []).length ? `<div class="d-sec"><h4>${t("d_weak_aliases")}</h4><div class="mono muted">${e.weak_aliases.slice(0, 8).map(esc).join("<br>")}${e.weak_aliases.length > 8 ? `<br>…+${e.weak_aliases.length - 8}` : ""}</div></div>` : ""}
+    ${e._weakm ? `<div class="warn">${t("weak_match")}</div>` : ""}
+    ${e.remarks ? `<div class="d-sec"><h4>Remarks</h4><div class="val muted">${esc(e.remarks)}</div></div>` : ""}
+    ${e._idm ? `<div class="idmatch">${t("id_match")}</div>` : ""}
+    <div class="warn">${t({ person: "d_warn_person", entity: "d_warn_entity", vessel: "d_warn_vessel", aircraft: "d_warn_aircraft" }[e.type] || "d_warn")}</div>`;
+}
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+let debounce;
+qEl.addEventListener("input", () => {
+  document.getElementById("qClear").hidden = !qEl.value;
+  qEl.closest(".qbox").classList.toggle("has-text", !!qEl.value);
+  clearTimeout(debounce); debounce = setTimeout(() => search(qEl.value), 250);
+});
+document.getElementById("qClear").addEventListener("click", () => {
+  qEl.value = ""; document.getElementById("qClear").hidden = true;
+  qEl.closest(".qbox").classList.remove("has-text");
+  search(""); qEl.focus();
+});
+qEl.addEventListener("keydown", (ev) => {
+  if (ev.key === "ArrowDown" && results.length) { ev.preventDefault(); selected = Math.min(selected + 1, results.length - 1); renderResults(); renderDetail(); }
+  if (ev.key === "ArrowUp" && results.length) { ev.preventDefault(); selected = Math.max(selected - 1, 0); renderResults(); renderDetail(); }
+});
+document.getElementById("fSource").addEventListener("change", () => search(qEl.value));
+document.getElementById("fType").addEventListener("change", () => search(qEl.value));
+
+/* --- advanced search UI --- */
+const advPanel = document.getElementById("advPanel");
+const advToggle = document.getElementById("advToggle");
+function refreshAdvN() {
+  const n = advCount(readAdv());
+  const el = document.getElementById("advN");
+  el.hidden = !n; el.textContent = n;
+  advToggle.classList.toggle("active", n > 0);
+}
+advToggle.addEventListener("click", () => {
+  const open = advPanel.hidden;
+  advPanel.hidden = !open;
+  advToggle.setAttribute("aria-expanded", open);
+  if (open && !advEls.country.options.length) fillAdvCountries();
+});
+function fillAdvCountries() {
+  if (!ALL || !ALL.length) return;
+  const cnt = {};
+  for (const e of ALL) for (const c of e.countries || []) cnt[c] = (cnt[c] || 0) + 1;
+  const opts = Object.entries(cnt).sort((a, b) => b[1] - a[1]).map(([c]) => `<option value="${c}">${c}</option>`).join("");
+  const cur = advEls.country.value;
+  advEls.country.innerHTML = `<option value="">${t("adv_any")}</option>` + opts;
+  advEls.country.value = cur;
+}
+["advYear", "advDob", "advDoc", "advImo"].forEach((id) =>
+  document.getElementById(id).addEventListener("input", () => {
+    refreshAdvN();
+    clearTimeout(debounce); debounce = setTimeout(() => search(qEl.value), 300);
+  }));
+advEls.country.addEventListener("change", () => { refreshAdvN(); search(qEl.value); });
+document.getElementById("advReset").addEventListener("click", () => {
+  advEls.year.value = ""; advEls.dob.value = ""; advEls.doc.value = ""; advEls.imo.value = ""; advEls.country.value = "";
+  refreshAdvN(); search(qEl.value); qEl.focus();
+});
+
+/* ---------- changelog ---------- */
+let changelogLoaded = false;
+let CHANGELOG = []; // распарсенные записи журнала (для CSV-выгрузки)
+async function renderChangelog() {
+  if (changelogLoaded) return;
+  changelogLoaded = true;
+  const box = document.getElementById("changelog");
+  try {
+    const txt = await (await fetch("data/changelog.jsonl")).text();
+    const lines = txt.trim().split("\n").filter(Boolean).map(JSON.parse).reverse();
+    CHANGELOG = lines;
+    if (!lines.length) { box.innerHTML = `<div class="empty">—</div>`; return; }
+    box.innerHTML = lines.map((en) => {
+      const dt = new Date(en.ts).toLocaleString(LANG === "ru" ? "ru-RU" : "en-GB");
+      const body = en.initial
+        ? `<div class="cl-src muted">${t("initial_load")}</div>`
+        : Object.entries(en.changes).map(([src, c]) => `
+            <div class="cl-src"><b>${src}</b>:
+              <span class="cnt add">+${c.added_count} ${t("added")}</span> ·
+              <span class="cnt rem">−${c.removed_count} ${t("removed")}</span></div>`)
+          .join("");
+      return `<div class="cl-entry"><div class="cl-date">${dt}</div>${body}</div>`;
+    }).join("");
+  } catch {
+    box.innerHTML = `<div class="empty">—</div>`;
+  }
+}
+document.getElementById("logCsv").addEventListener("click", () => {
+  if (!CHANGELOG.length) return;
+  const rows = [["timestamp", "source", "action", "id", "name"]];
+  for (const en of [...CHANGELOG].reverse()) { // от старых к новым
+    for (const [src, c] of Object.entries(en.changes || {})) {
+      for (const a of c.added || []) rows.push([en.ts, src, "added", a.id, a.name || ""]);
+      for (const r of c.removed || []) rows.push([en.ts, src, "removed", r.id, r.name || ""]);
+    }
+  }
+  const csv = rows.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\r\n");
+  const url = URL.createObjectURL(new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" }));
+  const a = Object.assign(document.createElement("a"), { href: url, download: "sanctionswatch-changelog.csv" });
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+/* ---------- sources view ---------- */
+async function renderSources() {
+  const s = STATS;
+  let health = null;
+  try { health = await (await fetch("data/health.json")).json(); } catch { /* старая версия данных */ }
+  const hs = (health && health.sources) || {};
+  const badge = (k) => {
+    const h = hs[k];
+    if (!h) return "";
+    if (h.status === "ok") return `<span class="hbadge ok">${t("hs_ok")}</span>`;
+    if (h.status === "stale") return `<span class="hbadge stale" title="${esc(h.error)}">${t("hs_stale")}</span>`;
+    return `<span class="hbadge bad" title="${esc(h.error)}">${t("hs_failed")}</span>`;
+  };
+  const mainRows = SOURCES_ORDER.map((k) => {
+    const v = s.sources[k];
+    const host = v.url.replace(/^https?:\/\//, "").split("/")[0];
+    return `<tr><td class="muted" style="font-family:var(--mono)">${k}</td>
+      <td>${esc(v.name)}<br><span class="muted small">${esc(v.via)}</span></td>
+      <td class="num">${fmt.format(s.by_source[k] || 0)}</td>
+      <td>${badge(k)}</td>
+      <td class="muted">${SOURCE_FMT[k]}</td>
+      <td><a href="${esc(v.url)}" target="_blank" rel="noopener">${esc(host)} ↗</a></td></tr>`;
+  }).join("");
+  const auxRows = Object.entries(hs)
+    .filter(([k, h]) => !SOURCES_ORDER.includes(k))
+    .map(([k, h]) => {
+      const host = h.url.replace(/^https?:\/\//, "").split("/")[0];
+      return `<tr class="auxrow"><td class="muted" style="font-family:var(--mono)">${k}</td>
+        <td>${esc(h.name)}<br><span class="muted small">${esc(h.note || "")}</span></td>
+        <td class="num">${h.records ? fmt.format(h.records) : "—"}</td>
+        <td>${badge(k)}</td><td></td>
+        <td><a href="${esc(h.url)}" target="_blank" rel="noopener">${esc(host)} ↗</a></td></tr>`;
+    }).join("");
+  document.getElementById("sourcesTable").innerHTML =
+    `<tr><th></th><th>${t("col_name")}</th><th class="num">${t("col_count")}</th><th>${t("col_status")}</th><th>${t("col_fmt")}</th><th>${t("col_url")}</th></tr>` +
+    mainRows + auxRows +
+    (health && health.generated_at ? `<tr class="auxrow"><td></td><td colspan="5" class="muted small">${t("hs_checked")}: ${esc(health.generated_at.replace("T", " ").slice(0, 16))} UTC</td></tr>` : "");
+}
+
+/* ---------- batch ---------- */
+const bEls = {
+  uploadPanel: document.getElementById("bUploadPanel"),
+  mapPanel: document.getElementById("bMapPanel"),
+  resPanel: document.getElementById("bResPanel"),
+  drop: document.getElementById("bDrop"),
+  file: document.getElementById("bFile"),
+  map: document.getElementById("bMap"),
+  preview: document.getElementById("bPreview"),
+  fileInfo: document.getElementById("bFileInfo"),
+  run: document.getElementById("bRun"),
+  back: document.getElementById("bBack"),
+  export: document.getElementById("bExport"),
+  again: document.getElementById("bAgain"),
+  sum: document.getElementById("bSum"),
+  resFilter: document.getElementById("bResFilter"),
+  resTable: document.getElementById("bResTable"),
+  tpl: document.getElementById("bTpl"),
+};
+let bHeaders = [], bData = [], bResults = null, bFilter = "all", bFileName = "";
+
+// --- чтение файла ---
+function parseCsv(text) {
+  const first = text.slice(0, 2000).split("\n")[0] || "";
+  const delim = [";", ",", "\t"].sort((a, b) => first.split(b).length - first.split(a).length)[0];
+  const rows = []; let row = [], cur = "", inQ = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQ) {
+      if (c === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else inQ = false; }
+      else cur += c;
+    } else if (c === '"') inQ = true;
+    else if (c === delim) { row.push(cur); cur = ""; }
+    else if (c === "\n" || c === "\r") {
+      if (c === "\r" && text[i + 1] === "\n") i++;
+      row.push(cur); cur = ""; rows.push(row); row = [];
+    } else cur += c;
+  }
+  if (cur !== "" || row.length) { row.push(cur); rows.push(row); }
+  return rows;
+}
+async function bReadFile(file) {
+  const ext = (file.name.split(".").pop() || "").toLowerCase();
+  let rows;
+  if (ext === "csv") rows = parseCsv(await file.text());
+  else {
+    if (!window.XLSX) throw new Error("xlsx lib not loaded");
+    const wb = XLSX.read(await file.arrayBuffer());
+    rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: false, defval: "" });
+  }
+  rows = rows.map((r) => r.map((c) => String(c ?? "").trim())).filter((r) => r.some((c) => c !== ""));
+  if (rows.length > 10001) rows = rows.slice(0, 10001);
+  return rows;
+}
+
+// --- автоматическое угадывание колонок ---
+function bGuess() {
+  const H = bHeaders.map((h) => norm(h));
+  const find = (re) => H.findIndex((h) => re.test(h));
+  const colText = (i) => bData.slice(0, 30).map((r) => r[i] || "");
+  const guess = {
+    name: find(/наимен|назван|имя|фио|контрагент|компани|организац|судно|корабль|name|company|entity|vessel|counterparty|organisation|organization/),
+    id: find(/\bинн\b|инн\b|огрн|\bimo\b|\binn\b|ogrn|идентификатор|номер\s*док|паспорт|борт|tail|\breg\b|document|tax\s*id|registration/),
+    dob: find(/дата\s*рожд|д\.?\s*р\.?|birth|\bdob\b/),
+    country: find(/страна|country|гражданств|nationality/),
+  };
+  if (guess.name < 0) { // колонка с самым длинным «текстовым» содержимым
+    let best = -1, bestLen = 0;
+    for (let i = 0; i < bHeaders.length; i++) {
+      if (Object.values(guess).includes(i)) continue;
+      const cells = colText(i).filter(Boolean);
+      const avg = cells.reduce((s, c) => s + c.length, 0) / (cells.length || 1);
+      const numRatio = cells.filter((c) => /^[\d\s.,-]+$/.test(c)).length / (cells.length || 1);
+      if (avg > bestLen && numRatio < 0.5) { bestLen = avg; best = i; }
+    }
+    guess.name = best;
+  }
+  return guess;
+}
+
+// --- UI сопоставления ---
+const B_FIELDS = ["name", "id", "dob", "country"];
+function bRenderMap() {
+  const guess = bGuess();
+  const opts = (sel) => `<option value="-1">${t("b_map_skip")}</option>` +
+    bHeaders.map((h, i) => `<option value="${i}"${i === sel ? " selected" : ""}>${esc(h || "—")}</option>`).join("");
+  bEls.map.innerHTML = B_FIELDS.map((f) =>
+    `<label><span>${t("b_map_" + f)}</span><select data-f="${f}">${opts(guess[f])}</select></label>`).join("");
+  const ncol = bHeaders.length;
+  const head = bHeaders.map((h) => `<th>${esc(h || "—")}</th>`).join("");
+  const body = bData.slice(0, 5).map((r) =>
+    `<tr>${Array.from({ length: ncol }, (_, i) => `<td>${esc(r[i] || "")}</td>`).join("")}</tr>`).join("");
+  bEls.preview.innerHTML = `<tr>${head}</tr>${body}`;
+  bEls.map.querySelectorAll("select").forEach((s) => s.addEventListener("change", refreshBRun));
+  refreshBRun();
+}
+function bMapping() {
+  const m = {};
+  bEls.map.querySelectorAll("select").forEach((s) => (m[s.dataset.f] = +s.value));
+  return m;
+}
+function refreshBRun() {
+  const m = bEls.map.querySelectorAll("select").length ? bMapping() : { name: -1 };
+  bEls.run.disabled = !ALL || m.name < 0;
+  bEls.run.textContent = ALL ? t("b_run") : t("b_wait");
+  bEls.run.title = m.name < 0 ? t("b_need_name") : "";
+}
+
+// --- страна: свободный текст → код записи ---
+let _bCMap = null;
+function bCountryCode(s) {
+  const q = norm(s || "");
+  if (!q || !ALL) return null;
+  if (!_bCMap) {
+    _bCMap = {};
+    const codes = new Set();
+    for (const e of ALL) for (const c of e.countries || []) if (c && c.length === 2) codes.add(c);
+    try {
+      for (const lang of ["ru", "en"]) {
+        const dn = new Intl.DisplayNames([lang], { type: "region" });
+        for (const c of codes) { const nm = dn.of(c); if (nm) _bCMap[norm(nm)] = c; }
+      }
+    } catch { /* нет Intl — только коды */ }
+    for (const c of codes) _bCMap[norm(c)] = c;
+  }
+  return _bCMap[q] || null;
+}
+
+// --- матчинг одной строки ---
+function bMatchOne(nm, idq, dob, cc) {
+  const pool = ALL;
+  // точное совпадение по идентификатору
+  if (idq && idq.length >= 5) {
+    for (const e of pool) {
+      if (cc && !(e.countries || []).includes(cc)) continue;
+      if ((e.identifiers || []).some((i) => { const ii = alnum(i); return ii.length >= 5 && ii.includes(idq); }))
+        return { e, score: 1, idm: true };
+    }
+  }
+  const qNorm = norm(nm);
+  if (qNorm.length < 2) return null;
+  const tokenSets = [tokens(qNorm)];
+  const lat = tokens(translit(qNorm));
+  if (lat.join(" ") !== tokenSets[0].join(" ")) tokenSets.push(lat);
+  let best = null;
+  for (const e of pool) {
+    if (cc && !(e.countries || []).includes(cc)) continue;
+    if (dob && e.dob) {
+      const cands = dobCandidates(e.dob);
+      if (cands.length && !cands.some((c) => c.y === dob.y && c.mo === dob.mo && c.d === dob.d)) continue;
+    }
+    const hay = e.key + " " + (e.aliases || []).slice(0, 6).map(norm).join(" ") + " " +
+      (e.weak_aliases || []).slice(0, 4).map(norm).join(" ");
+    let hit = false;
+    for (const set of tokenSets) { if (hit) break; for (const qt of set) if (hay.includes(qt)) { hit = true; break; } }
+    if (!hit) continue;
+    let s = scoreEntity(tokenSets, qNorm, e);
+    if (!best || s > best.score) best = { e, score: s, idm: false };
+  }
+  return best;
+}
+
+// --- запуск ---
+async function bRunBatch() {
+  const m = bMapping();
+  if (m.name < 0 || !ALL) return;
+  bEls.run.disabled = true;
+  const out = [];
+  const n = bData.length;
+  for (let i = 0; i < n; i++) {
+    const r = bData[i];
+    const nm = (r[m.name] || "").trim();
+    const idq = m.id >= 0 ? alnum(r[m.id] || "").slice(0, 12) : "";
+    const dob = m.dob >= 0 ? parseDobQuery(r[m.dob] || "") : null;
+    const cc = m.country >= 0 ? bCountryCode(r[m.country]) : null;
+    const res = nm ? bMatchOne(nm, idq, dob, cc) : null;
+    const score = res ? res.score : 0;
+    out.push({
+      row: r, e: res ? res.e : null, score, idm: !!(res && res.idm),
+      status: score >= 0.85 ? "match" : score >= 0.6 ? "review" : "clean",
+    });
+    if (i % 100 === 0) {
+      bEls.run.textContent = `${t("b_running")} ${Math.round((i / n) * 100)}%`;
+      await new Promise((r2) => setTimeout(r2, 0));
+    }
+  }
+  bResults = out; bFilter = "all";
+  bEls.mapPanel.hidden = true;
+  bEls.resPanel.hidden = false;
+  bRender();
+  bEls.run.textContent = t("b_run");
+  bEls.run.disabled = false;
+}
+
+// --- вывод результатов ---
+function bRender() {
+  if (!bResults) return;
+  const cnt = { match: 0, review: 0, clean: 0 };
+  bResults.forEach((r) => cnt[r.status]++);
+  const stat = (k) =>
+    `<span class="bstat ${k} ${bFilter === k ? "on" : ""}" data-f="${k}"><b>${cnt[k]}</b>${t("b_st_" + k)}</span>`;
+  bEls.sum.innerHTML =
+    `<span class="bstat ${bFilter === "all" ? "on" : ""}" data-f="all"><b>${bResults.length}</b>${t("b_f_all")}</span>` +
+    stat("match") + stat("review") + stat("clean");
+  bEls.sum.querySelectorAll(".bstat").forEach((s) =>
+    s.addEventListener("click", () => { bFilter = s.dataset.f; bRender(); }));
+  const rows = bResults.filter((r) => bFilter === "all" || r.status === bFilter);
+  const shown = rows.slice(0, 300);
+  bEls.resTable.innerHTML =
+    `<tr><th>#</th><th>${t("b_th_row")}</th><th>${t("b_th_status")}</th><th class="num">${t("b_th_score")}</th>` +
+    `<th>${t("b_th_match")}</th><th>${t("b_th_source")}</th><th>${t("b_th_type")}</th>` +
+    `<th>${t("b_th_date")}</th><th>${t("b_th_programs")}</th><th>${t("b_th_measures")}</th></tr>` +
+    shown.map((r) => {
+      const i = bResults.indexOf(r);
+      const cell = esc(r.row.filter(Boolean).slice(0, 3).join(" · "));
+      const matchCell = r.e ? esc(r.e.name) + (r.idm ? ` <span class="muted small">(${t("b_idm")})</span>` : "") : `<span class="muted">${t("b_match_none")}</span>`;
+      const ms = r.e ? (r.e.measures && r.e.measures.length ? r.e.measures : ["blocking"]) : [];
+      return `<tr><td class="muted">${i + 2}</td><td>${cell}</td>` +
+        `<td><span class="bst ${r.status}">${t("b_st_" + r.status)}</span></td>` +
+        `<td class="num">${r.score ? Math.round(r.score * 100) + "%" : "—"}</td>` +
+        `<td>${matchCell}</td><td>${r.e ? esc(r.e.source) : ""}</td><td>${r.e ? esc(t("t_" + r.e.type) || r.e.type) : ""}</td>` +
+        `<td class="mono">${r.e && r.e.listed_on ? esc(r.e.listed_on) : "—"}</td>` +
+        `<td>${(() => { const pr = r.e ? (r.e.programs || []) : []; if (!pr.length) return "—";
+          const full = esc(pr.join(", "));
+          const short = pr.slice(0, 2).map((p) => (p.length > 60 ? p.slice(0, 60) + "…" : p));
+          return `<span title="${full}">${esc(short.join(", "))}${pr.length > 2 ? ` <span class="muted">+${pr.length - 2}</span>` : ""}</span>`; })()}</td>` +
+        `<td>${ms.map((m) => `<span class="mchip ${m === "blocking" ? "block" : "nonsdn"}">${t("m_" + m).replace(/^· /, "")}</span>`).join("")}</td></tr>`;
+    }).join("") +
+    (rows.length > 300 ? `<tr><td colspan="10" class="muted">${t("b_shown")} ${rows.length} ${t("b_rows")}</td></tr>` : "");
+  bEls.fileInfo.textContent = `${bFileName} · ${bResults.length} ${t("b_rows")}`;
+}
+
+// --- экспорт ---
+function bExportXlsx() {
+  if (!bResults || !window.XLSX) return;
+  const head = [...bHeaders, t("b_th_status"), t("b_th_score"), t("b_th_match"), t("b_th_source"), t("b_th_type"),
+    t("b_th_date"), t("b_th_programs"), t("b_th_measures"), "ID"];
+  const aoa = [head];
+  bResults.filter((r) => bFilter === "all" || r.status === bFilter).forEach((r) => {
+    const ms = r.e ? (r.e.measures && r.e.measures.length ? r.e.measures : ["blocking"]) : [];
+    aoa.push([...r.row, t("b_st_" + r.status), r.score ? Math.round(r.score * 100) : "",
+      r.e ? r.e.name : "", r.e ? r.e.source : "", r.e ? (t("t_" + r.e.type) || r.e.type) : "",
+      r.e && r.e.listed_on ? r.e.listed_on : "", r.e ? (r.e.programs || []).join(", ") : "",
+      ms.map((m) => t("m_" + m).replace(/^· /, "")).join(", "), r.e ? r.e.id : ""]);
+  });
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), "screening");
+  XLSX.writeFile(wb, "sanctionswatch-batch.xlsx");
+}
+
+// --- шаблон ---
+function bDownloadTpl() {
+  const aoa = [
+    ["name", "id", "dob", "country"],
+    [LANG === "ru" ? 'ООО "Пример"' : "Example LLC", "7712345678", "", LANG === "ru" ? "Россия" : "Russia"],
+    ["NORD WIND", "IMO 9253325", "", ""],
+    [LANG === "ru" ? "Иванов Иван Иванович" : "Ivanov Ivan", "", LANG === "ru" ? "25.03.1966" : "03/25/1966", ""],
+  ];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), "template");
+  XLSX.writeFile(wb, "sanctionswatch-template.xlsx");
+}
+
+// --- события ---
+async function bHandleFile(file) {
+  try {
+    const rows = await bReadFile(file);
+    if (rows.length < 2) throw new Error("empty");
+    bHeaders = rows[0]; bData = rows.slice(1); bFileName = file.name; bResults = null;
+    bEls.uploadPanel.hidden = true; bEls.resPanel.hidden = true; bEls.mapPanel.hidden = false;
+    bEls.fileInfo.textContent = `${file.name} · ${bData.length} ${t("b_rows")}`;
+    bRenderMap();
+  } catch {
+    alert(t("b_err"));
+  }
+}
+bEls.drop.addEventListener("click", () => bEls.file.click());
+bEls.drop.addEventListener("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); bEls.file.click(); } });
+bEls.file.addEventListener("change", () => { if (bEls.file.files[0]) bHandleFile(bEls.file.files[0]); });
+["dragover", "dragleave", "drop"].forEach((ev) =>
+  bEls.drop.addEventListener(ev, (e) => {
+    e.preventDefault();
+    bEls.drop.classList.toggle("over", ev === "dragover");
+    if (ev === "drop" && e.dataTransfer.files[0]) bHandleFile(e.dataTransfer.files[0]);
+  }));
+bEls.run.addEventListener("click", bRunBatch);
+bEls.back.addEventListener("click", () => { bEls.mapPanel.hidden = true; bEls.uploadPanel.hidden = false; });
+bEls.again.addEventListener("click", () => {
+  bResults = null; bEls.file.value = "";
+  bEls.resPanel.hidden = true; bEls.mapPanel.hidden = true; bEls.uploadPanel.hidden = false;
+});
+bEls.export.addEventListener("click", bExportXlsx);
+bEls.tpl.addEventListener("click", bDownloadTpl);
+
+/* ---------- boot ---------- */
+async function boot() {
+  applyTheme();
+  applyI18n();
+  await loadStats();
+  fillScreenSelects();
+  renderDashboard();
+  renderSources();
+  renderDetail();
+  route();
+  resEl.innerHTML = `<div class="empty"><div>${t("type_q")}</div></div>`;
+
+  // фоном подтягиваем полный срез — после этого включаются сквозные фильтры
+  loadAll((f) => {
+    if (!ALL) {
+      const box = document.getElementById("chips");
+      box.innerHTML = `<span class="loadnote">${t("filters_loading")} ${Math.round(f * 100)}%</span>`;
+    }
+  }).then((pool) => {
+    ALL = pool; XL = null; buildXref(); fillAdvCountries(); refreshBRun();
+    renderDashboard();
+  }).catch(() => { /* фильтры останутся выключенными, дашборд работает по снапшоту */ });
+}
+document.getElementById("langToggle").addEventListener("click", () => {
+  LANG = LANG === "ru" ? "en" : "ru";
+  localStorage.setItem("sw_lang", LANG);
+  applyI18n(); fillScreenSelects(); fillAdvCountries(); renderDashboard(); renderSources(); renderResults(); renderDetail();
+  if (bResults) bRender();
+  changelogLoaded = false; if (document.getElementById("view-changelog").classList.contains("active")) renderChangelog();
+});
+document.getElementById("themeToggle").addEventListener("click", () => {
+  THEME = THEME === "light" ? "dark" : "light";
+  localStorage.setItem("sw_theme", THEME);
+  applyTheme();
+});
+boot();
