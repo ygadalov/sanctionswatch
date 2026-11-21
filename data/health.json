@@ -1,12 +1,12 @@
 {
- "generated_at": "2026-11-20T07:40:04+00:00",
+ "generated_at": "2026-11-21T07:37:19+00:00",
  "guard": "",
  "sources": {
   "US": {
    "name": "OFAC SDN + Consolidated (США)",
    "url": "https://sanctionslistservice.ofac.treas.gov/api/download/sdn.xml",
    "status": "ok",
-   "records": 19595,
+   "records": 19599,
    "error": "",
    "note": "",
    "cached": false
@@ -15,7 +15,7 @@
    "name": "UK Sanctions List (Великобритания)",
    "url": "https://sanctionslist.fcdo.gov.uk/docs/UK-Sanctions-List.xml",
    "status": "ok",
-   "records": 6449,
+   "records": 6448,
    "error": "",
    "note": "",
    "cached": false
@@ -33,7 +33,7 @@
    "name": "EU Consolidated FSF (ЕС)",
    "url": "https://data.opensanctions.org/datasets/latest/eu_fsf/targets.simple.csv",
    "status": "ok",
-   "records": 6163,
+   "records": 6197,
    "error": "",
    "note": "",
    "cached": false
