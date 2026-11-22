@@ -7,8 +7,8 @@
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link rel="preload" href="fonts/inter-cyrillic.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="fonts.css?v=202611220719">
-<link rel="stylesheet" href="styles.css?v=202611220719">
+<link rel="stylesheet" href="fonts.css?v=202611221830">
+<link rel="stylesheet" href="styles.css?v=202611221830">
 </head>
 <body>
 <header class="top">
@@ -110,22 +110,23 @@
     </div>
     <div class="adv-panel" id="advPanel" hidden>
       <div class="adv-grid">
-        <label class="adv-f"><span data-i18n="adv_year"></span>
-          <input id="advYear" type="text" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="1966"></label>
-        <label class="adv-f"><span data-i18n="adv_dob"></span>
-          <input id="advDob" type="text" inputmode="numeric" maxlength="10" autocomplete="off" data-i18n-ph="adv_dob_ph" placeholder="ДД.ММ.ГГГГ"></label>
-        <label class="adv-f"><span data-i18n="adv_country"></span>
+        <label class="adv-f"><span class="adv-lab"><span data-i18n="adv_country"></span><button class="info-i adv-info" type="button" data-tip="adv_tip_country" aria-label="i"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10.5" fill="none" stroke="currentColor" stroke-width="1.6"/><line x1="12" y1="10.5" x2="12" y2="16.5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><circle cx="12" cy="7.2" r="1.3" fill="currentColor"/></svg></button></span>
           <select id="advCountry"><option value="" data-i18n="adv_any"></option></select></label>
-        <label class="adv-f"><span data-i18n="adv_doc"></span>
-          <input id="advDoc" type="text" autocomplete="off" placeholder="M788439"></label>
-        <label class="adv-f"><span data-i18n="adv_imo"></span>
-          <input id="advImo" type="text" autocomplete="off" maxlength="10" placeholder="9253325"></label>
+        <label class="adv-f"><span class="adv-lab"><span data-i18n="adv_dob"></span><button class="info-i adv-info" type="button" data-tip="adv_tip_dob" aria-label="i"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10.5" fill="none" stroke="currentColor" stroke-width="1.6"/><line x1="12" y1="10.5" x2="12" y2="16.5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><circle cx="12" cy="7.2" r="1.3" fill="currentColor"/></svg></button></span>
+          <input id="advDob" type="text" inputmode="numeric" maxlength="10" autocomplete="off" data-i18n-ph="adv_dob_ph" placeholder="ДД.ММ.ГГГГ"></label>
+        <label class="adv-f"><span class="adv-lab"><span data-i18n="adv_doc"></span><button class="info-i adv-info" type="button" data-tip="adv_tip_doc" aria-label="i"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10.5" fill="none" stroke="currentColor" stroke-width="1.6"/><line x1="12" y1="10.5" x2="12" y2="16.5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><circle cx="12" cy="7.2" r="1.3" fill="currentColor"/></svg></button></span>
+          <input id="advDoc" type="text" autocomplete="off"></label>
+        <label class="adv-f"><span class="adv-lab"><span data-i18n="adv_imo"></span><button class="info-i adv-info" type="button" data-tip="adv_tip_imo" aria-label="i"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10.5" fill="none" stroke="currentColor" stroke-width="1.6"/><line x1="12" y1="10.5" x2="12" y2="16.5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><circle cx="12" cy="7.2" r="1.3" fill="currentColor"/></svg></button></span>
+          <input id="advImo" type="text" autocomplete="off" maxlength="10"></label>
         <button type="button" class="adv-reset" id="advReset" data-i18n="adv_reset"></button>
       </div>
-      <p class="adv-hint" data-i18n="adv_hint"></p>
+      <div class="info-tip" id="advTip" role="tooltip"></div>
     </div>
     <div class="screen-grid">
-      <div class="results" id="results" tabindex="0"></div>
+      <div class="screen-col">
+        <div class="r-filter" id="rFilter" hidden></div>
+        <div class="results" id="results" tabindex="0"></div>
+      </div>
       <aside class="detail" id="detail"></aside>
     </div>
   </section>
@@ -194,6 +195,6 @@
 </footer>
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="app.js?v=202611220719"></script>
+<script src="app.js?v=202611221830"></script>
 </body>
 </html>
