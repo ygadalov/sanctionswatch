@@ -19,6 +19,7 @@
 
 ```
 index.html / styles.css / app.js   — статичный фронтенд (GitHub Pages)
+fonts.css / favicon.svg            — шрифты и иконка
 data/stats.json                    — агрегированная статистика
 data/entities/all.json           — полный срез записей (клиент грузит один раз)
 data/countries.geo.json          — геометрия стран для карты (Natural Earth 110m, генерируется пайплайном)
