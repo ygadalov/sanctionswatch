@@ -726,7 +726,7 @@ function scoreVariants(tokenSets, qNorm, variants) {
     if (!et.length) continue;
     const vNorm = norm(v);
     const vNums = numTokens(vNorm);
-    // число из запроса не подтверждено имени записи (нет или другое) → это, скорее всего,
+    // число из запроса не подтверждено именем записи (нет или другое) → это, скорее всего,
     // другой объект: кап в зону ручной проверки. Лишние числа в имени записи не штрафуются.
     const numClash = qNums.length && qNums.some((n) => !vNums.includes(n));
     for (const qTokens of tokenSets) {
