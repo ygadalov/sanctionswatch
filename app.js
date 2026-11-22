@@ -1164,7 +1164,7 @@ advEls.country.addEventListener("change", () => { refreshAdvN(); search(qEl.valu
 document.getElementById("advReset").addEventListener("click", () => {
   advEls.dob.value = ""; advEls.doc.value = ""; advEls.imo.value = ""; advEls.country.value = "";
   advTip.classList.remove("show");
-  refreshAdvN(); search(""); qEl.focus();
+  refreshAdvN(); search(qEl.value); qEl.focus();
 });
 
 /* --- тултипы (i) у подписей полей доп. фильтров --- */
