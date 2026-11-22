@@ -1,28 +1,28 @@
 {
- "generated_at": "2026-11-21T07:37:19+00:00",
- "total": 53213,
+ "generated_at": "2026-11-22T07:19:22+00:00",
+ "total": 53211,
  "unique_subjects": 42123,
  "by_source": {
   "US": 20085,
   "CH": 7038,
   "UK": 6448,
-  "EU": 6197,
+  "EU": 6195,
   "CA": 5693,
   "AU": 3911,
   "JP": 2834,
   "UN": 1007
  },
  "by_type": {
-  "person": 28796,
-  "entity": 20013,
+  "person": 28795,
+  "entity": 20012,
   "vessel": 4062,
   "aircraft": 342
  },
  "by_country": {
-  "RU": 17384,
+  "RU": 17383,
   "ZZ": 12073,
   "IR": 3624,
-  "UA": 1714,
+  "UA": 1713,
   "CN": 1654,
   "SY": 1437,
   "BY": 1430,
@@ -81,7 +81,7 @@
   "KZ": 83
  },
  "by_program": {
-  "Россия / Украина": 25757,
+  "Россия / Украина": 25755,
   "Иран": 6763,
   "Терроризм": 6083,
   "Наркотрафик": 2689,
@@ -108,7 +108,7 @@
   "Зимбабве": 88
  },
  "by_measure": {
-  "blocking": 52727,
+  "blocking": 52725,
   "secondary": 12364,
   "non_sdn": 486,
   "ssi": 286,
@@ -144,7 +144,7 @@
   "2023": 12436,
   "2024": 6849,
   "2025": 5664,
-  "2026": 3560
+  "2026": 3558
  },
  "by_year_official": {
   "2000": 2,
@@ -180,7 +180,7 @@
   "2023": 11808,
   "2024": 6375,
   "2025": 4625,
-  "2026": 2792
+  "2026": 2790
  },
  "by_year_note": "official: UK/UN designation dates; os: OpenSanctions first_seen proxy (tracking started 2022-2024, so pre-2022 os years mean 'not earlier than')",
  "sources": {
