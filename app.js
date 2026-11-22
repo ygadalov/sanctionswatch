@@ -43,10 +43,14 @@ const I18N = {
     foot_data: "Данные: OFAC · FCDO · ЕС · ООН · GAC · SECO · DFAT · MOF. Обновление ежедневно ночью (МСК).",
     generated: "срез от",
     results_n: "совпадений",
+    r_f_all: "Все", r_f_hi: "Совпадение", r_f_md: "Проверить", r_f_lo: "Слабые",
     searching: "поиск…",
     type_q: "Введите запрос для проверки — минимум 2 символа.",
-    refine: "Уточнить", adv_year: "Год рождения", adv_dob: "Дата рождения", adv_dob_ph: "ДД.ММ.ГГГГ", adv_country: "Страна", adv_doc: "Документ / ИНН", adv_imo: "IMO / бортовой № (судно, самолёт)", adv_reset: "Сбросить", adv_any: "Любая",
-    adv_hint: "Точное совпадение по документу, ИНН, IMO или бортовому/серийному номеру даёт 100% независимо от написания имени. Год или дата рождения отсекают записи с другой датой.",
+    refine: "Уточнить", adv_dob: "Дата / год рождения", adv_dob_ph: "ДД.ММ.ГГГГ / ГГГГ", adv_country: "Страна", adv_doc: "Документ / ИНН", adv_imo: "IMO / бортовой №", adv_reset: "Сбросить", adv_any: "Любая",
+    adv_tip_country: "Страна по данным санкционных списков: гражданство, регистрация или порт приписки. У одной записи может быть несколько стран.",
+    adv_tip_dob: "Можно ввести год (1966) или полную дату (25.03.1966). Записи без даты рождения не отсекаются.",
+    adv_tip_doc: "Паспорт, нац. ID, ИНН — точное совпадение по номеру даёт 100% независимо от написания имени.",
+    adv_tip_imo: "IMO судна или бортовой/серийный номер самолёта — точное совпадение даёт 100% независимо от названия.",
     d_weak_aliases: "Слабые псевдонимы (OFAC)",
     weak_match: "Совпадение только по слабому псевдониму OFAC (weak aka) — высокий риск ложного срабатывания, обязательна сверка идентификаторов.",
     id_match: "Точное совпадение по идентификатору",
@@ -134,10 +138,14 @@ const I18N = {
     foot_data: "Data: OFAC · FCDO · EU · UN · GAC · SECO · DFAT · MOF. Refreshed nightly (MSK).",
     generated: "snapshot",
     results_n: "matches",
+    r_f_all: "All", r_f_hi: "Match", r_f_md: "Review", r_f_lo: "Weak",
     searching: "searching…",
     type_q: "Type a query to screen — at least 2 characters.",
-    refine: "Refine", adv_year: "Birth year", adv_dob: "Date of birth", adv_dob_ph: "MM/DD/YYYY", adv_country: "Country", adv_doc: "Document / Tax ID", adv_imo: "IMO / tail no. (vessel, aircraft)", adv_reset: "Reset", adv_any: "Any",
-    adv_hint: "An exact document, tax ID, IMO or tail/serial number match scores 100% regardless of name spelling. Birth year or full birth date filters out records with a different date.",
+    refine: "Refine", adv_dob: "Birth date / year", adv_dob_ph: "MM/DD/YYYY / YYYY", adv_country: "Country", adv_doc: "Document / Tax ID", adv_imo: "IMO / tail no.", adv_reset: "Reset", adv_any: "Any",
+    adv_tip_country: "Country as recorded in the sanctions lists: citizenship, registration or port of registry. A record may list several countries.",
+    adv_tip_dob: "Enter a year (1966) or a full date (03/25/1966). Records without a birth date are not excluded.",
+    adv_tip_doc: "Passport, national ID, tax ID — an exact number match scores 100% regardless of name spelling.",
+    adv_tip_imo: "Vessel IMO or aircraft tail/serial number — an exact match scores 100% regardless of the name.",
     d_weak_aliases: "Weak aliases (OFAC)",
     weak_match: "Match via an OFAC weak alias only — high false-positive risk, verify identifiers before treating as a hit.",
     id_match: "Exact identifier match",
@@ -304,8 +312,37 @@ function programGroups(programs) {
   for (const [g, rx] of PROGRAM_GROUPS) if (rx.test(text)) out.push(g);
   return out.length ? out : ["Прочие / без программы"];
 }
-/* стрagglers: редкие не-ISO значения стран из источников */
-const COUNTRY_FIX = { "Tunisia": "TN", "Democratic People'S Republic Of Korea": "KP" };
+/* не-ISO значения стран из источников (UK OFSI и OFAC пишут страны строками) → ISO 3166-1 alpha-2.
+   Ключи сравниваются через norm() — регистр и знаки не важны. Спорные регионы без однозначного
+   кода (Kafia Kingi, Jammu And Kashmir, «Congo», «Former Soviet Union», Csxx/Yucs/Suhh) не маппим. */
+const COUNTRY_FIX_RAW = {
+  "Tunisia": "TN", "Algeria": "DZ", "Maldives": "MV", "Seychelles": "SC",
+  "Morocco": "MA", "Mauritania": "MR", "Mauritius": "MU", "Comoros": "KM",
+  "Democratic People'S Republic Of Korea": "KP", "Dprk": "KP", "Korea, South": "KR",
+  "Congo (Democratic Republic)": "CD", "Congo, Republic Of The": "CG",
+  "Iran (Islamic Republic Of)": "IR", "Region: Iran": "IR",
+  "Saint Kitts And Nevis": "KN", "Saint Vincent And The Grenadines": "VC", "Saint Lucia": "LC",
+  "The Gambia": "GM", "Dominica": "DM", "Guyana": "GY", "Suriname": "SR",
+  "United Kingdom Of Great Britain And Northern Ireland": "GB", "Gb-Nir": "GB",
+  "United States Of America": "US",
+  "North Macedonia, The Republic Of": "MK", "Sierra Leone": "SL", "Benin": "BJ",
+  "Palau": "PW", "Jersey": "JE", "Guernsey": "GG", "Man, Isle Of": "IM", "Gibraltar": "GI",
+  "Cote D Ivoire": "CI", "Djibouti": "DJ", "Turkmenistan": "TM",
+  "Vanuatu": "VU", "United Republic Of Tanzania": "TZ", "Barbados": "BB", "Namibia": "NA",
+  "Bermuda": "BM", "Antigua And Barbuda": "AG", "Macau": "MO", "Bahamas, The": "BS",
+  "Cape Verde": "CV", "Cabo Verde": "CV",
+  "Palestinian": "PS", "Occupied Palestinian Territories": "PS", "State Of Palestine": "PS",
+  "West Bank": "PS", "Region: Gaza": "PS", "Region: West Bank": "PS",
+  "Region: North Gaza": "PS", "Region: Northern Gaza": "PS",
+  "Region: Russia": "RU", "Region: Crimea": "UA", "Ua-Lpr": "UA",
+  "Region: Northern Mali": "ML",
+  "Curacao": "CW", "Aruba": "AW", "Iceland": "IS", "Samoa": "WS", "San Marino": "SM",
+  "Viet Nam": "VN", "Madagascar": "MG",
+  "China, Hong Kong Special Administrative Region": "HK",
+};
+const COUNTRY_FIX = {};
+for (const [k, v] of Object.entries(COUNTRY_FIX_RAW)) COUNTRY_FIX[norm(k)] = v;
+function fixCountry(c) { return COUNTRY_FIX[norm(c)] || c; }
 
 /* ---------- cross-filters ---------- */
 const FILTERS = { source: null, type: null, country: null, program: null };
@@ -317,8 +354,7 @@ function filteredRecords() {
     if (FILTERS.source && e.source !== FILTERS.source) return false;
     if (FILTERS.type && e.type !== FILTERS.type) return false;
     if (FILTERS.country) {
-      const cs = (e.countries && e.countries.length ? e.countries : ["ZZ"])
-        .map((c) => COUNTRY_FIX[c] || c);
+      const cs = (e.countries && e.countries.length ? e.countries : ["ZZ"]).map(fixCountry);
       if (!cs.includes(FILTERS.country)) return false;
     }
     if (FILTERS.program && !programGroups(e.programs).includes(FILTERS.program)) return false;
@@ -333,7 +369,7 @@ function computeStats(recs) {
     bySource[e.source] = (bySource[e.source] || 0) + 1;
     byType[e.type] = (byType[e.type] || 0) + 1;
     for (const c0 of (e.countries && e.countries.length ? e.countries : ["ZZ"])) {
-      const c = COUNTRY_FIX[c0] || c0;
+      const c = fixCountry(c0);
       byCountry[c] = (byCountry[c] || 0) + 1;
     }
     for (const g of programGroups(e.programs))
@@ -447,7 +483,7 @@ function renderDashboard() {
   st.innerHTML = cards.map((c, i) =>
     `<div class="stat ${c.cls}${interactive() && c.src ? " clickable" : ""}${FILTERS.source === c.src && c.src ? " on" : ""}" data-i="${i}">
       <div class="n">${fmt.format(c.n)}</div>
-      <div class="l">${c.l}${i === 0 ? ` <button class="info-i" type="button" aria-label="${esc(t("meth_title"))}">i</button>` : ""}</div>
+      <div class="l">${c.l}${i === 0 ? `<button class="info-i" type="button" aria-label="${esc(t("meth_title"))}"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10.5" fill="none" stroke="currentColor" stroke-width="1.6"/><line x1="12" y1="10.5" x2="12" y2="16.5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><circle cx="12" cy="7.2" r="1.3" fill="currentColor"/></svg></button>` : ""}</div>
       ${i === 0 ? `<span class="info-tip" role="tooltip">${infoTip}</span>` : ""}</div>`).join("");
   const infoBtn = st.querySelector(".info-i");
   if (infoBtn) {
@@ -767,9 +803,12 @@ const detEl = document.getElementById("detail");
 let results = [];
 let selected = -1;
 let searchSeq = 0;
+let rFilter = "all"; // фильтр выдачи по уровню совпадения: all/hi/md/lo
+// hi = только точные: 100% по имени или 99% (точное совпадение по идентификатору, буст 0.99);
+// 85–98% (в т.ч. префиксный бонус) — частичные, уходят в «Проверить»
+const rLevel = (s) => { const sc = Math.round(s * 100); return sc >= 99 ? "hi" : sc >= 65 ? "md" : "lo"; };
 
 const advEls = {
-  year: document.getElementById("advYear"),
   dob: document.getElementById("advDob"),
   country: document.getElementById("advCountry"),
   doc: document.getElementById("advDoc"),
@@ -787,6 +826,8 @@ function parseDobQuery(s) {
     const [d, mo] = LANG === "en" ? [b, a] : [a, b];
     if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31) return { y: +m[3], mo, d };
   }
+  m = s.match(/^(\d{4})$/);                                       // только год: 1966
+  if (m) return { y: +m[1], mo: 0, d: 0 };
   return null;
 }
 function dobCandidates(dob) { // все полные даты, встречающиеся в строке dob записи
@@ -802,18 +843,18 @@ function dobCandidates(dob) { // все полные даты, встречаю�
 }
 function readAdv() {
   return {
-    year: (advEls.year.value.match(/\d{4}/) || [""])[0],
     dob: parseDobQuery(advEls.dob.value),
     country: advEls.country.value,
     doc: norm(advEls.doc.value).replace(/[^a-z0-9\u0400-\u04FF]/g, ""),
     imo: alnum(advEls.imo.value).slice(0, 10), // IMO судна или бортовой/серийный № самолёта (буквы+цифры)
   };
 }
-function advCount(a) { return (a.year ? 1 : 0) + (a.dob ? 1 : 0) + (a.country ? 1 : 0) + (a.doc ? 1 : 0) + (a.imo ? 1 : 0); }
+function advCount(a) { return (a.dob ? 1 : 0) + (a.country ? 1 : 0) + (a.doc ? 1 : 0) + (a.imo ? 1 : 0); }
 function alnum(x) { return norm(x).replace(/[^a-z0-9\u0400-\u04FF]/g, ""); }
 
 async function search(query) {
   const seq = ++searchSeq;
+  rFilter = "all";
   const qNorm0 = norm(query);
   const adv = readAdv();
   const hasAdv = advCount(adv) > 0;
@@ -842,16 +883,14 @@ async function search(query) {
   if (fTyp) pool = pool.filter((e) => e.type === fTyp);
 
   // --- уточняющие фильтры (жёсткие) ---
-  if (adv.country) pool = pool.filter((e) => (e.countries || []).includes(adv.country));
+  if (adv.country) pool = pool.filter((e) => (e.countries || []).map(fixCountry).includes(adv.country));
   if (adv.imo) pool = pool.filter((e) => (e.identifiers || []).some((i) => alnum(i).includes(adv.imo)));
   if (adv.doc) pool = pool.filter((e) => (e.identifiers || []).some((i) => alnum(i).includes(adv.doc)));
-  if (adv.year) pool = pool.filter((e) => {
-    const ys = (e.dob || "").match(/\d{4}/g);
-    return !ys || ys.includes(adv.year); // без даты рождения запись не отсекаем
-  });
   if (adv.dob) pool = pool.filter((e) => {
     const c = dobCandidates(e.dob);
-    if (c.length) return c.some((x) => x.y === adv.dob.y && x.mo === adv.dob.mo && x.d === adv.dob.d);
+    if (c.length) return adv.dob.mo
+      ? c.some((x) => x.y === adv.dob.y && x.mo === adv.dob.mo && x.d === adv.dob.d)
+      : c.some((x) => x.y === adv.dob.y); // введён только год — сверяем год
     const ys = (e.dob || "").match(/\d{4}/g); // в записи только год — сверяем год
     return !ys || ys.includes(String(adv.dob.y));
   });
@@ -906,14 +945,33 @@ async function search(query) {
 }
 
 function renderResults() {
+  const rf = document.getElementById("rFilter");
   if (!results.length) {
+    rf.hidden = true;
+    resEl.classList.remove("filled");
     if (norm(qEl.value).length >= 2)
       resEl.innerHTML = `<div class="empty"><div>${t("no_results")}</div></div>`;
     return;
   }
-  resEl.innerHTML = results.map(([s, e], i) => {
+  // чипы фильтра по уровню совпадения (как в Реестре)
+  const cnt = { hi: 0, md: 0, lo: 0 };
+  results.forEach(([s]) => cnt[rLevel(s)]++);
+  const chip = (k, n) =>
+    `<button type="button" class="rchip${k !== "all" ? " " + k : ""}${rFilter === k ? " on" : ""}" data-f="${k}"${!n ? " disabled" : ""}><b>${n}</b>${t("r_f_" + k)}</button>`;
+  rf.hidden = false;
+  rf.innerHTML = chip("all", results.length) + chip("hi", cnt.hi) + chip("md", cnt.md) + chip("lo", cnt.lo);
+  rf.querySelectorAll(".rchip").forEach((c) =>
+    c.addEventListener("click", () => { rFilter = c.dataset.f; renderResults(); }));
+  const view = results.map((r, i) => [r, i]).filter(([[s]]) => rFilter === "all" || rLevel(s) === rFilter);
+  if (!view.length) {
+    resEl.classList.remove("filled");
+    resEl.innerHTML = `<div class="empty"><div>${t("no_results")}</div></div>`;
+    return;
+  }
+  resEl.classList.add("filled");
+  resEl.innerHTML = view.map(([[s, e], i]) => {
     const sc = Math.round(s * 100);
-    const cls = sc >= 85 ? "hi" : sc >= 65 ? "md" : "lo";
+    const cls = rLevel(s);
     const type = t("t_" + e.type) || e.type;
     const sub = [type, (e.countries || []).join(" · "), e.dob].filter(Boolean).join(" · ");
     const xl = xlists(e);
@@ -983,7 +1041,7 @@ function renderDetail() {
     ${e.listed_on ? `<div class="d-sec"><h4>${e.listed_on_kind === "os" ? t("d_listed_os") : t("d_listed")}</h4><div class="mono">${esc(e.listed_on)}</div></div>` : ""}
     ${(e.countries || []).length ? `<div class="d-sec"><h4>${t("d_countries")}</h4><div>${e.countries.map((c) => `<span class="tag ct">${esc(c)}</span>`).join("")}</div></div>` : ""}
     ${(e.programs || []).length ? `<div class="d-sec"><h4>${t("d_programs")}</h4><div>${e.programs.map((p) => `<span class="tag">${esc(p)}</span>`).join("")}</div></div>` : ""}
-    ${(e.identifiers || []).length ? `<div class="d-sec"><h4>${t("d_ids")}</h4><div class="mono">${e.identifiers.map(esc).join("<br>")}</div></div>` : ""}
+    ${(e.identifiers || []).length ? `<div class="d-sec"><h4>${t("d_ids")}</h4><div class="mono">${e.identifiers.map(escIds).join("<br>")}</div></div>` : ""}
     ${ext.length ? `<div class="d-sec"><h4>${t("d_extcheck")}</h4><div class="extlinks">${ext.map(([n, u]) => `<a class="extlink" href="${u}" target="_blank" rel="noopener">${n} ↗</a>`).join("")}</div><div class="muted small" style="margin-top:6px">${t("d_extcheck_note")}</div></div>` : ""}
     ${(e.aliases || []).length ? `<div class="d-sec"><h4>${t("d_aliases")}</h4><div class="mono">${e.aliases.slice(0, 12).map(esc).join("<br>")}${e.aliases.length > 12 ? `<br><span class="muted">…+${e.aliases.length - 12}</span>` : ""}</div></div>` : ""}
     ${(e.weak_aliases || []).length ? `<div class="d-sec"><h4>${t("d_weak_aliases")}</h4><div class="mono muted">${e.weak_aliases.slice(0, 8).map(esc).join("<br>")}${e.weak_aliases.length > 8 ? `<br>…+${e.weak_aliases.length - 8}` : ""}</div></div>` : ""}
@@ -996,6 +1054,8 @@ function renderDetail() {
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
+// нормализация написания IMO при показе: источники пишут и «IMO9274800», и «IMO 9906544»
+function escIds(s) { return esc(s).replace(/\bIMO\s?(\d{7})\b/gi, "IMO $1"); }
 
 let debounce;
 qEl.addEventListener("input", () => {
@@ -1033,22 +1093,52 @@ advToggle.addEventListener("click", () => {
 function fillAdvCountries() {
   if (!ALL || !ALL.length) return;
   const cnt = {};
-  for (const e of ALL) for (const c of e.countries || []) cnt[c] = (cnt[c] || 0) + 1;
-  const opts = Object.entries(cnt).sort((a, b) => b[1] - a[1]).map(([c]) => `<option value="${c}">${c}</option>`).join("");
+  for (const e of ALL) for (const c0 of e.countries || []) {
+    const c = fixCountry(c0);
+    cnt[c] = (cnt[c] || 0) + 1;
+  }
+  const opts = Object.entries(cnt).sort((a, b) => b[1] - a[1]).map(([c]) => {
+    const nm = countryName(c);
+    const label = c === "ZZ" ? t("country_unknown") : (nm && nm !== c ? `${nm} (${c})` : c);
+    return `<option value="${c}">${esc(label)}</option>`;
+  }).join("");
   const cur = advEls.country.value;
   advEls.country.innerHTML = `<option value="">${t("adv_any")}</option>` + opts;
   advEls.country.value = cur;
 }
-["advYear", "advDob", "advDoc", "advImo"].forEach((id) =>
+["advDob", "advDoc", "advImo"].forEach((id) =>
   document.getElementById(id).addEventListener("input", () => {
     refreshAdvN();
     clearTimeout(debounce); debounce = setTimeout(() => search(qEl.value), 300);
   }));
 advEls.country.addEventListener("change", () => { refreshAdvN(); search(qEl.value); });
 document.getElementById("advReset").addEventListener("click", () => {
-  advEls.year.value = ""; advEls.dob.value = ""; advEls.doc.value = ""; advEls.imo.value = ""; advEls.country.value = "";
-  refreshAdvN(); search(qEl.value); qEl.focus();
+  advEls.dob.value = ""; advEls.doc.value = ""; advEls.imo.value = ""; advEls.country.value = "";
+  advTip.classList.remove("show");
+  refreshAdvN(); search(""); qEl.focus();
 });
+
+/* --- тултипы (i) у подписей полей доп. фильтров --- */
+const advTip = document.getElementById("advTip");
+{
+  let advHideTimer = null;
+  const placeTip = (btn) => {
+    const r = btn.getBoundingClientRect();
+    advTip.textContent = t(btn.dataset.tip);
+    advTip.style.left = Math.max(8, Math.min(r.left - 150, innerWidth - 336)) + "px";
+    advTip.style.top = (r.bottom + 8) + "px";
+  };
+  const showTip = (btn) => { clearTimeout(advHideTimer); placeTip(btn); advTip.classList.add("show"); };
+  const hideTip = () => { advHideTimer = setTimeout(() => advTip.classList.remove("show"), 160); };
+  advPanel.querySelectorAll(".adv-info").forEach((btn) => {
+    btn.addEventListener("mouseenter", () => showTip(btn));
+    btn.addEventListener("mouseleave", hideTip);
+    btn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); showTip(btn); });
+  });
+  advTip.addEventListener("mouseenter", () => clearTimeout(advHideTimer));
+  advTip.addEventListener("mouseleave", hideTip);
+  document.addEventListener("click", () => advTip.classList.remove("show"));
+}
 
 /* ---------- changelog ---------- */
 let changelogLoaded = false;
@@ -1266,7 +1356,7 @@ function bMatchOne(nm, idq, dob, cc) {
   // точное совпадение по идентификатору
   if (idq && idq.length >= 5) {
     for (const e of pool) {
-      if (cc && !(e.countries || []).includes(cc)) continue;
+      if (cc && !(e.countries || []).map(fixCountry).includes(cc)) continue;
       if ((e.identifiers || []).some((i) => { const ii = alnum(i); return ii.length >= 5 && ii.includes(idq); }))
         return { e, score: 1, idm: true };
     }
@@ -1278,10 +1368,13 @@ function bMatchOne(nm, idq, dob, cc) {
   if (lat.join(" ") !== tokenSets[0].join(" ")) tokenSets.push(lat);
   let best = null;
   for (const e of pool) {
-    if (cc && !(e.countries || []).includes(cc)) continue;
+    if (cc && !(e.countries || []).map(fixCountry).includes(cc)) continue;
     if (dob && e.dob) {
       const cands = dobCandidates(e.dob);
-      if (cands.length && !cands.some((c) => c.y === dob.y && c.mo === dob.mo && c.d === dob.d)) continue;
+      const ok = dob.mo
+        ? cands.some((c) => c.y === dob.y && c.mo === dob.mo && c.d === dob.d)
+        : cands.some((c) => c.y === dob.y);
+      if (cands.length && !ok) continue;
     }
     const hay = e.key + " " + (e.aliases || []).slice(0, 6).map(norm).join(" ") + " " +
       (e.weak_aliases || []).slice(0, 4).map(norm).join(" ");
