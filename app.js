@@ -1487,7 +1487,7 @@ function bRender() {
     `<th>${t("b_th_match")}</th><th>${t("b_th_source")}</th><th>${t("b_th_type")}</th>` +
     `<th>${t("b_th_date")}</th><th>${t("b_th_programs")}</th><th>${t("b_th_measures")}</th></tr>` +
     shown.map((r) => {
-      const i = бResults.indexOf(r);
+      const i = bResults.indexOf(r);
       const cell = esc(r.row.filter(Boolean).slice(0, 3).join(" · "));
       const matchCell = r.e ? esc(r.e.name) + (r.idm ? ` <span class="muted small">(${t("b_idm")})</span>` : "") : `<span class="muted">${t("b_match_none")}</span>`;
       const ms = r.e ? (r.e.measures && r.e.measures.length ? r.e.measures : ["blocking"]) : [];
