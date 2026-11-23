@@ -59,7 +59,7 @@ const I18N = {
     no_results_sub: "Отсутствие совпадения в этом срезе не является юридическим заключением. Проверьте написание и альтернативные транслитерации.",
     select_hint: "Выберите запись слева, чтобы увидеть детали.",
     d_aliases: "Также известен как", d_countries: "Страны", d_programs: "Программы", d_ids: "Идентификаторы",
-    d_dob: "Дата рождения", d_listed: "Включён в список", d_listed_os: "Отслеживается с (по данным агрегатора)", d_source: "Источник", d_type: "Тип",
+    d_dob: "Дата рождения", d_listed: "Включён в список", d_listed_os: "Отслеживается с (по данным агрегатора)", d_source: "Списки", d_type: "Тип", d_measures: "Меры", d_remarks: "Примечания",
     d_warn: "Совпадение по названию — это не совпадение объекта. Сверьте идентификаторы в карточке выше.",
     d_warn_person: "Совпадение по имени — это не совпадение личности. Сверьте дату рождения, серию и номер документа, адрес в карточке выше.",
     d_warn_entity: "Совпадение по названию — это не совпадение компании. Сверьте ИНН / регистрационный номер, юридический адрес и санкционные программы в карточке выше.",
@@ -77,7 +77,7 @@ const I18N = {
     years_hint: "Официальные даты — UK (с 2020), ООН (с 2001) и суда ЕС под ст. 3s (EUMARE, из текстов регламентов). Прокси — первое появление в мониторинге OpenSanctions (EU/AU/JP/CA/CH и суда США): записи до 2022 означают «не ранее», пик 2023 — старт трекинга агрегатора, а не всплеск санкций. OFAC историю дат не публикует.",
     years_official: "UK + ООН + суда ЕС (официальные даты)",
     years_os: "Прокси (OpenSanctions, «не ранее»)",
-    f_source: "Источник", f_type: "Тип", f_country: "Страна", f_program: "Программа",
+    f_source: "Источник", f_type: "Тип", f_country: "Страна", f_program: "Программа", f_measure: "Мера", f_year: "Год",
     reset_all: "Сбросить всё", filters_loading: "фильтры: загрузка данных",
     click_to_filter: "клик — фильтр",
     b_title: "Пакетная проверка списка",
@@ -162,7 +162,7 @@ const I18N = {
     no_results_sub: "Absence of a match in this snapshot is not a legal conclusion. Check spelling and alternative transliterations.",
     select_hint: "Select an entry on the left to see details.",
     d_aliases: "Also known as", d_countries: "Countries", d_programs: "Programs", d_ids: "Identifiers",
-    d_dob: "Date of birth", d_listed: "Listed on", d_listed_os: "Tracked since (aggregator data)", d_source: "Source", d_type: "Type",
+    d_dob: "Date of birth", d_listed: "Listed on", d_listed_os: "Tracked since (aggregator data)", d_source: "Lists", d_type: "Type", d_measures: "Measures", d_remarks: "Remarks",
     d_warn: "A name match is not an identity match. Verify the identifiers in the record above.",
     d_warn_person: "A name match is not an identity match. Verify the date of birth, document series/number and address in the record above.",
     d_warn_entity: "A name match is not a company match. Verify the tax/registration number, registered address and sanctions programs in the record above.",
@@ -180,7 +180,7 @@ const I18N = {
     years_hint: "Official dates — UK (since 2020), UN (since 2001) and EU vessels under Art. 3s (EUMARE, from regulation texts). Proxy — first seen in OpenSanctions monitoring (EU/AU/JP/CA/CH and US vessels): entries before 2022 mean 'not earlier than'; the 2023 peak is the aggregator's tracking start, not a sanctions surge. OFAC does not publish designation dates.",
     years_official: "UK + UN + EU vessels (official dates)",
     years_os: "Proxy (OpenSanctions, 'not earlier than')",
-    f_source: "Source", f_type: "Type", f_country: "Country", f_program: "Program",
+    f_source: "Source", f_type: "Type", f_country: "Country", f_program: "Program", f_measure: "Measure", f_year: "Year",
     reset_all: "Reset all", filters_loading: "filters: loading data",
     click_to_filter: "click to filter",
     b_title: "Batch list screening",
@@ -364,7 +364,7 @@ for (const [k, v] of Object.entries(COUNTRY_FIX_RAW)) COUNTRY_FIX[norm(k)] = v;
 function fixCountry(c) { return COUNTRY_FIX[norm(c)] || c; }
 
 /* ---------- cross-filters ---------- */
-const FILTERS = { source: null, type: null, country: null, program: null };
+const FILTERS = { source: null, type: null, country: null, program: null, measure: null, year: null };
 const filtersActive = () => Object.values(FILTERS).some((v) => v !== null);
 
 function filteredRecords() {
@@ -377,6 +377,9 @@ function filteredRecords() {
       if (!cs.includes(FILTERS.country)) return false;
     }
     if (FILTERS.program && !programGroups(e.programs).includes(FILTERS.program)) return false;
+    if (FILTERS.measure &&
+        !(e.measures && e.measures.length ? e.measures : ["blocking"]).includes(FILTERS.measure)) return false;
+    if (FILTERS.year && (e.listed_on || "").slice(0, 4) !== FILTERS.year) return false;
     return true;
   });
 }
@@ -437,6 +440,8 @@ function renderChips() {
     type: [t("f_type"), t("t_" + FILTERS.type)],
     country: [t("f_country"), FILTERS.country === "ZZ" ? t("country_unknown") : countryName(FILTERS.country)],
     program: [t("f_program"), grp(FILTERS.program)],
+    measure: [t("f_measure"), t("m_" + FILTERS.measure)],
+    year: [t("f_year"), FILTERS.year],
   };
   box.innerHTML = Object.keys(labels).filter((k) => FILTERS[k]).map((k) =>
     `<span class="chip"><span class="k">${labels[k][0]}</span>${esc(String(labels[k][1]))}
@@ -508,11 +513,7 @@ function renderDashboard() {
   if (infoBtn) {
     const tip = st.querySelector(".info-tip");
     let hideTimer = null;
-    const place = () => {
-      const r = infoBtn.getBoundingClientRect();
-      tip.style.left = Math.max(8, Math.min(r.left - 150, innerWidth - 336)) + "px";
-      tip.style.top = (r.bottom + 8) + "px";
-    };
+    const place = () => smartPlace(tip, infoBtn.getBoundingClientRect());
     const show = () => { clearTimeout(hideTimer); place(); tip.classList.add("show"); };
     const hide = () => { hideTimer = setTimeout(() => tip.classList.remove("show"), 160); };
     infoBtn.addEventListener("mouseenter", show);
@@ -623,18 +624,24 @@ function renderDashboard() {
   if (mEntries.length) {
     const mmax = Math.max(...mEntries.map(([, n]) => n));
     mc.innerHTML = mEntries.map(([k, n]) =>
-      `<div class="bar-row type" title="${t("m_" + k)}: ${fmt.format(n)}${k === "non_sdn" && subTitle ? "\n" + subTitle : ""}">
+      `<div class="bar-row type${interactive() ? " clickable" : ""}${FILTERS.measure === k ? " on" : FILTERS.measure ? " dim" : ""}" data-m="${k}" title="${t("m_" + k)}: ${fmt.format(n)}${k === "non_sdn" && subTitle ? "\n" + subTitle : ""}${interactive() ? "\n" + t("click_to_filter") : ""}">
         <span class="cc">${t("m_" + k)}</span>
         <span class="bar-track"><span class="bar-fill${k !== "blocking" ? " amber" : ""}" style="width:${(n / mmax) * 100}%"></span></span>
         <span class="v">${fmt.format(n)}</span></div>`).join("");
+    if (interactive())
+      mc.querySelectorAll(".bar-row.clickable").forEach((el) =>
+        el.addEventListener("click", () => setFilter("measure", el.dataset.m)));
   } else {
     mc.innerHTML = `<span class="muted small">${t("filters_loading")}…</span>`;
   }
 
-  // listings by year: официальные даты (UK/UN) + прокси first_seen (остальные)
+  // listings by year: официальные даты (UK/UN) + прокси first_seen (остальные).
+  // График всегда показывает ПОЛНЫЙ ряд (без учёта фильтров) — фильтр по году
+  // только подсвечивает столбец (.on) и приглушает остальные (.dim), как ТОПы.
+  const sY = (ALL && ALL.length && filtersActive()) ? computeStats(ALL) : s;
   const yc = document.getElementById("yearChart");
-  if (yc && (s.by_year_official || s.by_year_os)) {
-    const off = s.by_year_official || {}, os = s.by_year_os || {};
+  if (yc && (sY.by_year_official || sY.by_year_os)) {
+    const off = sY.by_year_official || {}, os = sY.by_year_os || {};
     const years = [...new Set([...Object.keys(off), ...Object.keys(os)])].sort();
     const tot = (y) => (off[y] || 0) + (os[y] || 0);
     const max = Math.max(1, ...years.map(tot));
@@ -648,7 +655,7 @@ function renderDashboard() {
         // подпись — на круглых годах; последний год — только если не слипается с круглой подписью
         const showLab = (+y % 5 === 0) || (+y === lastY && lastY - lastLabeled > 2);
         const kv = sum >= 1000 ? (Math.round(sum / 100) / 10).toString().replace(".", LANG === "ru" ? "," : ".") + "k" : (sum || "");
-        return `<div class="ycol" title="${y}: ${t("years_official")} — ${fmt.format(o)}; ${t("years_os")} — ${fmt.format(p)}">
+        return `<div class="ycol${interactive() ? " clickable" : ""}${FILTERS.year === y ? " on" : FILTERS.year ? " dim" : ""}" data-y="${y}" title="${y}: ${t("years_official")} — ${fmt.format(o)}; ${t("years_os")} — ${fmt.format(p)}${interactive() ? "\n" + t("click_to_filter") : ""}">
           <div class="ybars"><div class="yval" style="bottom:calc(${bh}% + 2px)">${kv}</div><div class="ybar" style="height:${bh}%">
             <div class="yseg os" style="height:${100 - offH}%"></div>
             <div class="yseg off" style="height:${offH}%"></div>
@@ -662,6 +669,9 @@ function renderDashboard() {
          <span><i class="ysw off"></i>${t("years_official")}</span>
          <span><i class="ysw os"></i>${t("years_os")}</span>
        </div>`;
+    if (interactive())
+      yc.querySelectorAll(".ycol.clickable").forEach((el) =>
+        el.addEventListener("click", () => setFilter("year", el.dataset.y)));
   }
 
   renderMap(s);
@@ -1093,26 +1103,32 @@ function renderDetail() {
     return;
   }
   const [score, e] = results[selected];
-  const srcName = (STATS.sources[e.source] || {}).name || e.source;
   const ext = extLinks(e);
   const ms = (e.measures && e.measures.length ? e.measures : ["blocking"]);
+  // все списки, где встречается субъект (та же дедупликация по имени+году, что в чипе «N списков»)
+  const srcSet = XL ? XL.get(e.key + "|" + dobYear(e)) : null;
+  const srcKeys = srcSet ? [...srcSet] : [e.source];
+  srcKeys.sort((a, b) => SOURCES_ORDER.indexOf(a) - SOURCES_ORDER.indexOf(b));
+  const tipBtn = (tip) =>
+    `<button class="info-i adv-info" type="button" data-tip="${tip}" aria-label="i"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10.5" fill="none" stroke="currentColor" stroke-width="1.6"/><line x1="12" y1="10.5" x2="12" y2="16.5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><circle cx="12" cy="7.2" r="1.3" fill="currentColor"/></svg></button>`;
   detEl.innerHTML = `
     <h3>${esc(e.name)}</h3>
     <div class="d-sub">${e.id} · ${Math.round(score * 100)}%</div>
-    <div class="mchips" style="margin:8px 0 2px">${ms.map((m) =>
-      `<span class="mchip ${m === "blocking" ? "block" : "nonsdn"}">${t("m_" + m).replace(/^· /, "")}</span>`).join("")}</div>
+    <div class="d-sec"><h4>${t("d_measures")}</h4><div class="mchips" style="margin:2px 0 2px">${ms.map((m) =>
+      `<span class="mchip ${m === "blocking" ? "block" : "nonsdn"}">${t("m_" + m).replace(/^· /, "")}</span>`).join("")}</div></div>
     <div class="d-sec"><h4>${t("d_type")}</h4><div class="val">${t("t_" + e.type) || e.type}</div></div>
-    <div class="d-sec"><h4>${t("d_source")}</h4><div class="val">${esc(srcName)}</div></div>
+    <div class="d-sec"><h4>${t("d_source")} (${srcKeys.length})</h4><div class="srclist">${srcKeys.map((k) =>
+      `<div class="srcrow${k === e.source ? " cur" : ""}"><span class="srcn">${esc(srcShort(k))}</span><span class="srcc"> · ${esc(srcCountry(k))}</span><span class="srcf">${esc(srcFull(k))}</span></div>`).join("")}</div></div>
     ${e.dob ? `<div class="d-sec"><h4>${t("d_dob")}</h4><div class="mono">${esc(e.dob)}</div></div>` : ""}
-    ${e.listed_on ? `<div class="d-sec"><h4>${e.listed_on_kind === "os" ? t("d_listed_os") : t("d_listed")}</h4><div class="mono">${esc(e.listed_on)}</div></div>` : ""}
+    ${e.listed_on ? `<div class="d-sec"><h4>${e.listed_on_kind === "os" ? t("d_listed_os") : t("d_listed")}</h4><div class="mono">${esc(fmtDate(e.listed_on))}</div></div>` : ""}
     ${(e.countries || []).length ? `<div class="d-sec"><h4>${t("d_countries")}</h4><div>${e.countries.map((c) => `<span class="tag ct">${esc(c)}</span>`).join("")}</div></div>` : ""}
     ${(e.programs || []).length ? `<div class="d-sec"><h4>${t("d_programs")}</h4><div>${e.programs.map((p) => `<span class="tag">${esc(p)}</span>`).join("")}</div></div>` : ""}
     ${(e.identifiers || []).length ? `<div class="d-sec"><h4>${t("d_ids")}</h4><div class="mono">${e.identifiers.map(escIds).join("<br>")}</div></div>` : ""}
-    ${ext.length ? `<div class="d-sec"><h4>${t("d_extcheck")}</h4><div class="extlinks">${ext.map(([n, u]) => `<a class="extlink" href="${u}" target="_blank" rel="noopener">${n} ↗</a>`).join("")}</div><div class="muted small" style="margin-top:6px">${t("d_extcheck_note")}</div></div>` : ""}
+    ${ext.length ? `<div class="d-sec"><h4>${t("d_extcheck")}${tipBtn("d_extcheck_note")}</h4><div class="extlinks">${ext.map(([n, u]) => `<a class="extlink" href="${u}" target="_blank" rel="noopener">${n} ↗</a>`).join("")}</div></div>` : ""}
     ${(e.aliases || []).length ? `<div class="d-sec"><h4>${t("d_aliases")}</h4><div class="mono">${e.aliases.slice(0, 12).map(esc).join("<br>")}${e.aliases.length > 12 ? `<br><span class="muted">…+${e.aliases.length - 12}</span>` : ""}</div></div>` : ""}
     ${(e.weak_aliases || []).length ? `<div class="d-sec"><h4>${t("d_weak_aliases")}</h4><div class="mono muted">${e.weak_aliases.slice(0, 8).map(esc).join("<br>")}${e.weak_aliases.length > 8 ? `<br>…+${e.weak_aliases.length - 8}` : ""}</div></div>` : ""}
     ${e._weakm ? `<div class="warn">${t("weak_match")}</div>` : ""}
-    ${e.remarks ? `<div class="d-sec"><h4>Remarks</h4><div class="val muted">${esc(e.remarks)}</div></div>` : ""}
+    ${e.remarks ? `<div class="d-sec"><h4>${t("d_remarks")}</h4><div class="val muted">${esc(e.remarks)}</div></div>` : ""}
     ${e._idm ? `<div class="idmatch">${t("id_match")}</div>` : ""}
     <div class="warn">${t({ person: "d_warn_person", entity: "d_warn_entity", vessel: "d_warn_vessel", aircraft: "d_warn_aircraft" }[e.type] || "d_warn")}</div>`;
 }
@@ -1122,6 +1138,38 @@ function esc(s) {
 }
 // нормализация написания IMO при показе: источники пишут и «IMO9274800», и «IMO 9906544»
 function escIds(s) { return esc(s).replace(/\bIMO\s?(\d{7})\b/gi, "IMO $1"); }
+// дата ISO → локальный формат: RU ДД.ММ.ГГГГ, EN MM/DD/YYYY (неполные даты — как есть)
+function fmtDate(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || "");
+  if (!m) return iso;
+  return LANG === "en" ? `${m[2]}/${m[3]}/${m[1]}` : `${m[3]}.${m[2]}.${m[1]}`;
+}
+// короткие названия списков и страны-инициаторы (RU/EN), полное имя — из stats.json
+const SRC_SHORT = {
+  US: ["OFAC SDN + non-SDN", "OFAC SDN + non-SDN"],
+  UK: ["UK Sanctions List", "UK Sanctions List"],
+  EU: ["EU FSF", "EU FSF"],
+  EUMARE: ["Суда ЕС, ст. 3s", "EU vessels, Art. 3s"],
+  UN: ["Список СБ ООН", "UN SC List"],
+  CA: ["GAC Consolidated", "GAC Consolidated"],
+  CH: ["SECO", "SECO"],
+  AU: ["DFAT", "DFAT"],
+  JP: ["MOF", "MOF"],
+};
+const SRC_COUNTRY = {
+  US: ["США", "USA"], UK: ["Великобритания", "United Kingdom"], EU: ["ЕС", "EU"],
+  EUMARE: ["ЕС", "EU"], UN: ["ООН", "UN"], CA: ["Канада", "Canada"],
+  CH: ["Швейцария", "Switzerland"], AU: ["Австралия", "Australia"], JP: ["Япония", "Japan"],
+};
+function srcShort(k) { const v = SRC_SHORT[k]; return v ? v[LANG === "en" ? 1 : 0] : k; }
+function srcCountry(k) { const v = SRC_COUNTRY[k]; return v ? v[LANG === "en" ? 1 : 0] : ""; }
+function srcFull(k) {
+  let nm = (STATS.sources[k] || {}).name || k;
+  nm = nm.replace(/\s*\([^()]*\)\s*$/, ""); // срезаем «(США)»/«(ЕС, теневой флот)» из stats
+  if (LANG === "en") nm = nm.replace("ст. 3s Регл.", "Art. 3s Reg.");
+  const c = srcCountry(k);
+  return c ? `${nm} (${c})` : nm;
+}
 
 let debounce;
 qEl.addEventListener("input", () => {
@@ -1185,14 +1233,30 @@ document.getElementById("advReset").addEventListener("click", () => {
 });
 
 /* --- тултипы (i) у подписей полей доп. фильтров и заголовка «Типы мер» --- */
+/* Умное позиционирование тултипа: выбирает сторону, где больше места;
+   если не влезает целиком даже туда — ограничивает высоту (скролл внутри, см. .info-tip overflow-y:auto) */
+function smartPlace(tip, r) {
+  tip.style.maxHeight = "";
+  tip.classList.add("show"); // показываем, чтобы измерить
+  const h = tip.offsetHeight, w = tip.offsetWidth;
+  const below = innerHeight - r.bottom - 16; // свободное место под кнопкой
+  const above = r.top - 16;                  // свободное место над кнопкой
+  let top = r.bottom + 8;
+  if (h > below && above > below) { // снизу не влезает, сверху места больше — переворачиваем вверх
+    top = Math.max(8, r.top - 8 - h);
+    if (h > above) tip.style.maxHeight = above + "px";
+  } else if (h > below) {
+    tip.style.maxHeight = Math.max(120, below) + "px";
+  }
+  tip.style.left = Math.max(8, Math.min(r.left - 150, innerWidth - w - 8)) + "px";
+  tip.style.top = top + "px";
+}
 const advTip = document.getElementById("advTip");
 {
   let advHideTimer = null;
   const placeTip = (btn) => {
-    const r = btn.getBoundingClientRect();
     advTip.textContent = t(btn.dataset.tip);
-    advTip.style.left = Math.max(8, Math.min(r.left - 150, innerWidth - 336)) + "px";
-    advTip.style.top = (r.bottom + 8) + "px";
+    smartPlace(advTip, btn.getBoundingClientRect());
   };
   const showTip = (btn) => { clearTimeout(advHideTimer); placeTip(btn); advTip.classList.add("show"); };
   const hideTip = () => { advHideTimer = setTimeout(() => advTip.classList.remove("show"), 160); };
@@ -1658,4 +1722,3 @@ document.getElementById("themeToggle").addEventListener("click", () => {
   localStorage.setItem("sw_theme", THEME);
   applyTheme();
 });
-boot();
