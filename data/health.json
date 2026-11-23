@@ -1,5 +1,5 @@
 {
- "generated_at": "2026-11-23T08:02:52+00:00",
+ "generated_at": "2026-11-23T13:33:32+00:00",
  "guard": "",
  "sources": {
   "US": {
@@ -34,6 +34,15 @@
    "url": "https://data.opensanctions.org/datasets/latest/eu_fsf/targets.simple.csv",
    "status": "ok",
    "records": 6195,
+   "error": "",
+   "note": "",
+   "cached": false
+  },
+  "EUMARE": {
+   "name": "EU Designated Vessels, ст. 3s Регл. 833/2014 (ЕС, теневой флот)",
+   "url": "https://data.opensanctions.org/datasets/latest/eu_journal_sanctions/targets.simple.csv",
+   "status": "ok",
+   "records": 671,
    "error": "",
    "note": "",
    "cached": false
