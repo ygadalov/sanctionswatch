@@ -1722,3 +1722,4 @@ document.getElementById("themeToggle").addEventListener("click", () => {
   localStorage.setItem("sw_theme", THEME);
   applyTheme();
 });
+boot();
