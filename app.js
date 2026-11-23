@@ -22,8 +22,9 @@ const I18N = {
     by_country: "Топ стран по числу записей",
     by_type: "Типы сущностей",
     measure_title: "Типы мер",
-    measure_hint: "Блокировка — заморозка активов и полный запрет сделок; вторичные — риск санкций для третьих стран (подмножество блокирующих); non-SDN — ограничения отдельных операций (долг, акции, ценные бумаги)",
+    measure_hint: "Блокировка — заморозка активов и полный запрет сделок; вторичные — риск санкций для третьих стран (подмножество блокирующих); non-SDN — ограничения отдельных операций (долг, акции, ценные бумаги); запрет захода в порты — ст. 3s Регл. ЕС 833/2014 для судов: порты и морские услуги ЕС закрыты, активы НЕ замораживаются",
     m_blocking: "Блокировка активов", m_non_sdn: "non-SDN — ограниченные меры",
+    m_port_ban: "Запрет захода в порты / морские услуги (ЕС)",
     m_ssi: "· SSI (секторальные)", m_cmic: "· NS-CMIC (ценные бумаги)",
     m_ns_plc: "· NS-PLC", m_capta: "· CAPTA", m_ns_mbs: "· NS-MBS (меню мер)",
     m_secondary: "Вторичные санкции",
@@ -32,14 +33,14 @@ const I18N = {
     meth_title: "Как читать цифры",
     meth_records: "записей в списках — каждое включение субъекта в каждый список считается отдельно (один человек в 6 списках = 6 записей)",
     meth_unique: "уникальных субъектов — оценка после дедупликации по имени и дате рождения между списками",
-    meth_note: "Медийные цифры («20 000+ санкций») обычно дополнительно включают секторальные меры (эмбарго, экспортный контроль, ценовые потолки) и списки 30+ юрисдикций. Здесь — только персональные/корпоративные листинги 8 реестров.",
+    meth_note: "Медийные цифры («20 000+ санкций») обычно дополнительно включают секторальные меры (эмбарго, экспортный контроль, ценовые потолки) и списки 30+ юрисдикций. Здесь — персональные/корпоративные листинги 8 реестров плюс суда под ст. 3s Регл. ЕС 833/2014 (запрет захода в порты — не заморозка активов).",
     total: "Всего записей", persons: "Физлица", entities: "Организации", vessels: "Суда", aircraft: "Воздушные суда",
     q_ph: "Имя, компания, судно, ИНН, IMO…",
     all_sources: "Все источники", all_types: "Все типы",
     log_title: "Журнал изменений списков",
     log_hint: "Каждое обновление пайплайна фиксирует, какие записи добавлены или удалены в каждом источнике. Это основа аудит-трейла. Полный перечень имён — в выгрузке CSV.",
     src_title: "Источники данных",
-    src_note: "US (SDN + Consolidated non-SDN) / UK / UN загружаются напрямую из официальных реестров. EU / AU / JP / CA / CH — через нормализацию OpenSanctions (обновляется ежедневно из официальных списков). Скрининг для юридически значимых решений сверяйте с первоисточником.",
+    src_note: "US (SDN + Consolidated non-SDN) / UK / UN загружаются напрямую из официальных реестров. EU / EUMARE / AU / JP / CA / CH — через нормализацию OpenSanctions (обновляется ежедневно из официальных списков; EUMARE — суда под ст. 3s Регл. 833/2014, транскрипция аннексов EUR-Lex). Скрининг для юридически значимых решений сверяйте с первоисточником.",
     foot_data: "Данные: OFAC · FCDO · ЕС · ООН · GAC · SECO · DFAT · MOF. Обновление ежедневно ночью (МСК).",
     generated: "срез от",
     results_n: "совпадений",
@@ -73,8 +74,8 @@ const I18N = {
     col_name: "Название", col_count: "Записей", col_url: "URL", col_fmt: "Формат", col_status: "Статус",
     hs_ok: "OK", hs_stale: "кеш (сбой загрузки)", hs_failed: "недоступен", hs_checked: "Проверка источников",
     years_title: "Динамика включений по годам",
-    years_hint: "Официальные даты — только UK (с 2020) и ООН (с 2001). Прокси — первое появление в мониторинге OpenSanctions (EU/AU/JP/CA/CH и суда США): записи до 2022 означают «не ранее», пик 2023 — старт трекинга агрегатора, а не всплеск санкций. OFAC историю дат не публикует.",
-    years_official: "UK + ООН (официальные даты)",
+    years_hint: "Официальные даты — UK (с 2020), ООН (с 2001) и суда ЕС под ст. 3s (EUMARE, из текстов регламентов). Прокси — первое появление в мониторинге OpenSanctions (EU/AU/JP/CA/CH и суда США): записи до 2022 означают «не ранее», пик 2023 — старт трекинга агрегатора, а не всплеск санкций. OFAC историю дат не публикует.",
+    years_official: "UK + ООН + суда ЕС (официальные даты)",
     years_os: "Прокси (OpenSanctions, «не ранее»)",
     f_source: "Источник", f_type: "Тип", f_country: "Страна", f_program: "Программа",
     reset_all: "Сбросить всё", filters_loading: "фильтры: загрузка данных",
@@ -86,11 +87,18 @@ const I18N = {
     b_tpl: "Скачать шаблон (XLSX)",
     b_privacy: "Файл обрабатывается целиком в вашем браузере и никуда не отправляется.",
     b_map_title: "Сопоставление колонок",
-    b_map_name: "Название / ФИО (обязательно)",
-    b_map_id: "Идентификатор (ИНН, IMO, бортовой)",
+    b_map_name: "Название / ФИО",
+    b_map_id: "Идентификатор",
+    b_map_id_hint: "ИНН, ОГРН, IMO, бортовой/серийный номер, паспорт, налоговый номер — по этой колонке выполняется точный поиск (100% совпадение)",
     b_map_dob: "Дата рождения",
     b_map_country: "Страна",
     b_map_skip: "— не использовать —",
+    b_map_type: "Тип сущности",
+    b_type_any: "Любой",
+    b_type_vessel: "Судно",
+    b_type_entity: "Юрлицо",
+    b_type_person: "Физлицо",
+    b_type_aircraft: "Воздушное судно",
     b_run: "Запустить проверку",
     b_back: "Назад",
     b_res_title: "Результаты проверки",
@@ -104,7 +112,7 @@ const I18N = {
     b_shown: "показаны первые 300 из",
     b_rows: "строк",
     b_err: "Не удалось прочитать файл. Поддерживаются XLSX, XLS и CSV.",
-    b_need_name: "Укажите колонку с названием или именем — без неё проверка невозможна.",
+    b_need_name: "Укажите колонку с названием или идентификатором — без них проверка невозможна.",
     b_wait: "Дождитесь загрузки данных…",
     b_running: "проверяю…",
     b_idm: "по идентификатору",
@@ -117,8 +125,9 @@ const I18N = {
     by_country: "Top countries by entries",
     by_type: "Entity types",
     measure_title: "Measure types",
-    measure_hint: "Blocking — asset freeze and full dealing ban; secondary — risk for third-country parties (subset of blocking); non-SDN — restrictions on specific dealings (debt, equity, securities)",
+    measure_hint: "Blocking — asset freeze and full dealing ban; secondary — risk for third-country parties (subset of blocking); non-SDN — restrictions on specific dealings (debt, equity, securities); port access ban — Art. 3s of EU Reg. 833/2014 for vessels: EU ports and maritime services are closed, assets are NOT frozen",
     m_blocking: "Asset blocking", m_non_sdn: "non-SDN — restricted dealings",
+    m_port_ban: "Port access / maritime services ban (EU)",
     m_ssi: "· SSI (sectoral)", m_cmic: "· NS-CMIC (securities)",
     m_ns_plc: "· NS-PLC", m_capta: "· CAPTA", m_ns_mbs: "· NS-MBS (menu-based)",
     m_secondary: "Secondary sanctions risk",
@@ -127,14 +136,14 @@ const I18N = {
     meth_title: "How to read the numbers",
     meth_records: "list entries — each designation in each list is counted separately (one person in 6 lists = 6 entries)",
     meth_unique: "unique subjects — estimate after cross-list deduplication by name and date of birth",
-    meth_note: "Media figures (\"20,000+ sanctions\") typically also count sectoral measures (embargoes, export controls, price caps) and 30+ jurisdictions. This dashboard covers personal/corporate listings from 8 registers only.",
+    meth_note: "Media figures (\"20,000+ sanctions\") typically also count sectoral measures (embargoes, export controls, price caps) and 30+ jurisdictions. This dashboard covers personal/corporate listings from 8 registers plus vessels under Art. 3s of EU Reg. 833/2014 (port access ban — not an asset freeze).",
     total: "Total entries", persons: "Individuals", entities: "Entities", vessels: "Vessels", aircraft: "Aircraft",
     q_ph: "Name, company, vessel, tax ID, IMO…",
     all_sources: "All sources", all_types: "All types",
     log_title: "List changelog",
     log_hint: "Every pipeline run records which entries were added or removed in each source. This is the audit-trail foundation. The CSV export contains the full list of names.",
     src_title: "Data sources",
-    src_note: "US (SDN + Consolidated non-SDN) / UK / UN are fetched directly from official registers. EU / AU / JP / CA / CH come via OpenSanctions normalization (updated daily from official lists). For legally significant decisions, verify against the primary source.",
+    src_note: "US (SDN + Consolidated non-SDN) / UK / UN are fetched directly from official registers. EU / EUMARE / AU / JP / CA / CH come via OpenSanctions normalization (updated daily from official lists; EUMARE — vessels under Art. 3s of Reg. 833/2014, transcribed from EUR-Lex annexes). For legally significant decisions, verify against the primary source.",
     foot_data: "Data: OFAC · FCDO · EU · UN · GAC · SECO · DFAT · MOF. Refreshed nightly (MSK).",
     generated: "snapshot",
     results_n: "matches",
@@ -168,8 +177,8 @@ const I18N = {
     col_name: "Name", col_count: "Entries", col_url: "URL", col_fmt: "Format", col_status: "Status",
     hs_ok: "OK", hs_stale: "cache (fetch failed)", hs_failed: "unavailable", hs_checked: "Sources checked",
     years_title: "Listings by year",
-    years_hint: "Official dates — UK (since 2020) and UN (since 2001) only. Proxy — first seen in OpenSanctions monitoring (EU/AU/JP/CA/CH and US vessels): entries before 2022 mean 'not earlier than'; the 2023 peak is the aggregator's tracking start, not a sanctions surge. OFAC does not publish designation dates.",
-    years_official: "UK + UN (official dates)",
+    years_hint: "Official dates — UK (since 2020), UN (since 2001) and EU vessels under Art. 3s (EUMARE, from regulation texts). Proxy — first seen in OpenSanctions monitoring (EU/AU/JP/CA/CH and US vessels): entries before 2022 mean 'not earlier than'; the 2023 peak is the aggregator's tracking start, not a sanctions surge. OFAC does not publish designation dates.",
+    years_official: "UK + UN + EU vessels (official dates)",
     years_os: "Proxy (OpenSanctions, 'not earlier than')",
     f_source: "Source", f_type: "Type", f_country: "Country", f_program: "Program",
     reset_all: "Reset all", filters_loading: "filters: loading data",
@@ -181,11 +190,18 @@ const I18N = {
     b_tpl: "Download template (XLSX)",
     b_privacy: "The file is processed entirely in your browser and is never uploaded anywhere.",
     b_map_title: "Column mapping",
-    b_map_name: "Name (required)",
-    b_map_id: "Identifier (tax ID, IMO, tail no.)",
+    b_map_name: "Name",
+    b_map_id: "Identifier",
+    b_map_id_hint: "Tax ID, IMO, tail/serial number, passport, registration number — this column is used for exact-match lookup (100% score)",
     b_map_dob: "Date of birth",
     b_map_country: "Country",
     b_map_skip: "— skip —",
+    b_map_type: "Entity type",
+    b_type_any: "Any",
+    b_type_vessel: "Vessel",
+    b_type_entity: "Legal entity",
+    b_type_person: "Individual",
+    b_type_aircraft: "Aircraft",
     b_run: "Run screening",
     b_back: "Back",
     b_res_title: "Screening results",
@@ -199,7 +215,7 @@ const I18N = {
     b_shown: "showing first 300 of",
     b_rows: "rows",
     b_err: "Could not read the file. XLSX, XLS and CSV are supported.",
-    b_need_name: "Map the name column — screening is impossible without it.",
+    b_need_name: "Map a name or identifier column — screening is impossible without one.",
     b_wait: "Waiting for data to load…",
     b_running: "screening…",
     b_idm: "ID match",
@@ -248,10 +264,11 @@ function applyTheme() {
 /* ---------- data ---------- */
 let STATS = null;   // precomputed snapshot (fast first paint)
 let ALL = null;     // full records, needed for cross-filters
-const SOURCES_ORDER = ["US", "UK", "EU", "UN", "CA", "CH", "AU", "JP"];
+const SOURCES_ORDER = ["US", "UK", "EU", "EUMARE", "UN", "CA", "CH", "AU", "JP"];
 // мини-флаги источников (lipis flag-icons 4x3, UN — упрощённый) — ~5.4 КБ инлайн
 const FLAGS = {"US": '<svg xmlns="http://www.w3.org/2000/svg" id="flag-icons-us" viewBox="0 0 640 480"><path fill="#bd3d44" d="M0 0h640v480H0"/><path stroke="#fff" stroke-width="37" d="M0 55.3h640M0 129h640M0 203h640M0 277h640M0 351h640M0 425h640"/><path fill="#192f5d" d="M0 0h364.8v258.5H0"/><marker id="us-a" markerHeight="30" markerWidth="30"><path fill="#fff" d="m14 0 9 27L0 10h28L5 27z"/></marker><path fill="none" marker-mid="url(#us-a)" d="m0 0 16 11h61 61 61 61 60L47 37h61 61 60 61L16 63h61 61 61 61 60L47 89h61 61 60 61L16 115h61 61 61 61 60L47 141h61 61 60 61L16 166h61 61 61 61 60L47 192h61 61 60 61L16 218h61 61 61 61 60z"/></svg>', "UK": '<svg xmlns="http://www.w3.org/2000/svg" id="flag-icons-gb" viewBox="0 0 640 480"><path fill="#012169" d="M0 0h640v480H0z"/><path fill="#FFF" d="m75 0 244 181L562 0h78v62L400 241l240 178v61h-80L320 301 81 480H0v-60l239-178L0 64V0z"/><path fill="#C8102E" d="m424 281 216 159v40L369 281zm-184 20 6 35L54 480H0zM640 0v3L391 191l2-44L590 0zM0 0l239 176h-60L0 42z"/><path fill="#FFF" d="M241 0v480h160V0zM0 160v160h640V160z"/><path fill="#C8102E" d="M0 193v96h640v-96zM273 0v480h96V0z"/></svg>', "EU": '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" id="flag-icons-eu" viewBox="0 0 640 480"><defs><g id="eu-d"><g id="eu-b"><path id="eu-a" d="m0-1-.3 1 .5.1z"/><use xlink:href="#eu-a" transform="scale(-1 1)"/></g><g id="eu-c"><use xlink:href="#eu-b" transform="rotate(72)"/><use xlink:href="#eu-b" transform="rotate(144)"/></g><use xlink:href="#eu-c" transform="scale(-1 1)"/></g></defs><path fill="#039" d="M0 0h640v480H0z"/><g fill="#fc0" transform="translate(320 242.3)scale(23.7037)"><use xlink:href="#eu-d" width="100%" height="100%" y="-6"/><use xlink:href="#eu-d" width="100%" height="100%" y="6"/><g id="eu-e"><use xlink:href="#eu-d" width="100%" height="100%" x="-6"/><use xlink:href="#eu-d" width="100%" height="100%" transform="rotate(-144 -2.3 -2.1)"/><use xlink:href="#eu-d" width="100%" height="100%" transform="rotate(144 -2.1 -2.3)"/><use xlink:href="#eu-d" width="100%" height="100%" transform="rotate(72 -4.7 -2)"/><use xlink:href="#eu-d" width="100%" height="100%" transform="rotate(72 -5 .5)"/></g><use xlink:href="#eu-e" width="100%" height="100%" transform="scale(-1 1)"/></g></svg>', "CA": '<svg xmlns="http://www.w3.org/2000/svg" id="flag-icons-ca" viewBox="0 0 640 480"><path fill="#fff" d="M150.1 0h339.7v480H150z"/><path fill="#d52b1e" d="M-19.7 0h169.8v480H-19.7zm509.5 0h169.8v480H489.9zM201 232l-13.3 4.4 61.4 54c4.7 13.7-1.6 17.8-5.6 25l66.6-8.4-1.6 67 13.9-.3-3.1-66.6 66.7 8c-4.1-8.7-7.8-13.3-4-27.2l61.3-51-10.7-4c-8.8-6.8 3.8-32.6 5.6-48.9 0 0-35.7 12.3-38 5.8l-9.2-17.5-32.6 35.8c-3.5.9-5-.5-5.9-3.5l15-74.8-23.8 13.4q-3.2 1.3-5.2-2.2l-23-46-23.6 47.8q-2.8 2.5-5 .7L264 130.8l13.7 74.1c-1.1 3-3.7 3.8-6.7 2.2l-31.2-35.3c-4 6.5-6.8 17.1-12.2 19.5s-23.5-4.5-35.6-7c4.2 14.8 17 39.6 9 47.7"/></svg>', "CH": '<svg xmlns="http://www.w3.org/2000/svg" id="flag-icons-ch" viewBox="0 0 640 480"><g fill-rule="evenodd" stroke-width="1pt"><path fill="red" d="M0 0h640v480H0z"/><g fill="#fff"><path d="M170 195h300v90H170z"/><path d="M275 90h90v300h-90z"/></g></g></svg>', "AU": '<svg xmlns="http://www.w3.org/2000/svg" id="flag-icons-au" viewBox="0 0 640 480"><path fill="#00008B" d="M0 0h640v480H0z"/><path fill="#fff" d="m37.5 0 122 90.5L281 0h39v31l-120 89.5 120 89V240h-40l-120-89.5L40.5 240H0v-30l119.5-89L0 32V0z"/><path fill="red" d="M212 140.5 320 220v20l-135.5-99.5zm-92 10 3 17.5-96 72H0zM320 0v1.5l-124.5 94 1-22L295 0zM0 0l119.5 88h-30L0 21z"/><path fill="#fff" d="M120.5 0v240h80V0zM0 80v80h320V80z"/><path fill="red" d="M0 96.5v48h320v-48zM136.5 0v240h48V0z"/><path fill="#fff" d="m527 396.7-20.5 2.6 2.2 20.5-14.8-14.4-14.7 14.5 2-20.5-20.5-2.4 17.3-11.2-10.9-17.5 19.6 6.5 6.9-19.5 7.1 19.4 19.5-6.7-10.7 17.6zm-3.7-117.2 2.7-13-9.8-9 13.2-1.5 5.5-12.1 5.5 12.1 13.2 1.5-9.8 9 2.7 13-11.6-6.6zm-104.1-60-20.3 2.2 1.8 20.3-14.4-14.5-14.8 14.1 2.4-20.3-20.2-2.7 17.3-10.8-10.5-17.5 19.3 6.8L387 178l6.7 19.3 19.4-6.3-10.9 17.3 17.1 11.2ZM623 186.7l-20.9 2.7 2.3 20.9-15.1-14.7-15 14.8 2.1-21-20.9-2.4 17.7-11.5-11.1-17.9 20 6.7 7-19.8 7.2 19.8 19.9-6.9-11 18zm-96.1-83.5-20.7 2.3 1.9 20.8-14.7-14.8-15.1 14.4 2.4-20.7-20.7-2.8 17.7-11L467 73.5l19.7 6.9 7.3-19.5 6.8 19.7 19.8-6.5-11.1 17.6zM234 385.7l-45.8 5.4 4.6 45.9-32.8-32.4-33 32.2 4.9-45.9-45.8-5.8 38.9-24.8-24-39.4 43.6 15 15.8-43.4 15.5 43.5 43.7-14.7-24.3 39.2 38.8 25.1Z"/></svg>', "JP": '<svg xmlns="http://www.w3.org/2000/svg" id="flag-icons-jp" viewBox="0 0 640 480"><defs><clipPath id="jp-a"><path fill-opacity=".7" d="M-88 32h640v480H-88z"/></clipPath></defs><g fill-rule="evenodd" stroke-width="1pt" clip-path="url(#jp-a)" transform="translate(88 -32)"><path fill="#fff" d="M-128 32h720v480h-720z"/><circle cx="523.1" cy="344.1" r="194.9" fill="#bc002d" transform="translate(-168.4 8.6)scale(.76554)"/></g></svg>', "UN": '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480"><rect width="640" height="480" fill="#5b92e5"/><g fill="none" stroke="#fff" stroke-width="14"><circle cx="320" cy="200" r="110"/><ellipse cx="320" cy="200" rx="46" ry="110"/><path d="M320 90v220M215 165h210M215 235h210"/><path d="M120 330c40 60 110 90 200 90M520 330c-40 60-110 90-200 90"/></g><g fill="#fff"><circle cx="150" cy="300" r="12"/><circle cx="185" cy="345" r="12"/><circle cx="230" cy="378" r="12"/><circle cx="490" cy="300" r="12"/><circle cx="455" cy="345" r="12"/><circle cx="410" cy="378" r="12"/></g></svg>'};
-const SOURCE_FMT = { US: "XML / API", UK: "XML / CSV", EU: "XML / CSV", UN: "XML",
+FLAGS.EUMARE = FLAGS.EU; // теневой флот ЕС — флаг ЕС
+const SOURCE_FMT = { US: "XML / API", UK: "XML / CSV", EU: "XML / CSV", EUMARE: "EUR-Lex→CSV", UN: "XML",
   CA: "XLSX→CSV", CH: "XML→CSV", AU: "XLSX→CSV", JP: "XLSX→CSV" };
 
 async function loadStats() {
@@ -602,7 +619,7 @@ function renderDashboard() {
   const mc = document.getElementById("measureChart");
   const sub = ["ssi", "cmic", "ns_plc", "capta", "ns_mbs"].filter((k) => bm[k]);
   const subTitle = sub.map((k) => `${t("m_" + k).replace(/^· /, "")}: ${fmt.format(bm[k])}`).join("\n");
-  const mEntries = ["blocking", "secondary", "non_sdn"].filter((k) => bm[k]).map((k) => [k, bm[k]]);
+  const mEntries = ["blocking", "secondary", "non_sdn", "port_ban"].filter((k) => bm[k]).map((k) => [k, bm[k]]);
   if (mEntries.length) {
     const mmax = Math.max(...mEntries.map(([, n]) => n));
     mc.innerHTML = mEntries.map(([k, n]) =>
@@ -1167,7 +1184,7 @@ document.getElementById("advReset").addEventListener("click", () => {
   refreshAdvN(); search(qEl.value); qEl.focus();
 });
 
-/* --- тултипы (i) у подписей полей доп. фильтров --- */
+/* --- тултипы (i) у подписей полей доп. фильтров и заголовка «Типы мер» --- */
 const advTip = document.getElementById("advTip");
 {
   let advHideTimer = null;
@@ -1179,14 +1196,14 @@ const advTip = document.getElementById("advTip");
   };
   const showTip = (btn) => { clearTimeout(advHideTimer); placeTip(btn); advTip.classList.add("show"); };
   const hideTip = () => { advHideTimer = setTimeout(() => advTip.classList.remove("show"), 160); };
-  advPanel.querySelectorAll(".adv-info").forEach((btn) => {
-    btn.addEventListener("mouseenter", () => showTip(btn));
-    btn.addEventListener("mouseleave", hideTip);
-    btn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); showTip(btn); });
-  });
+  // делегирование — работает и для динамически отрисованных кнопок (напр., панель «Реестр»)
+  const infoOf = (e) => (e.target && e.target.closest ? e.target.closest(".adv-info") : null);
+  document.addEventListener("mouseover", (e) => { const b = infoOf(e); if (b) showTip(b); });
+  document.addEventListener("mouseout", (e) => { const b = infoOf(e); if (b && !(e.relatedTarget && b.contains(e.relatedTarget))) hideTip(); });
+  document.addEventListener("click", (e) => { const b = infoOf(e); if (b) { e.preventDefault(); showTip(b); } });
   advTip.addEventListener("mouseenter", () => clearTimeout(advHideTimer));
   advTip.addEventListener("mouseleave", hideTip);
-  document.addEventListener("click", () => advTip.classList.remove("show"));
+  document.addEventListener("click", (e) => { if (!infoOf(e)) advTip.classList.remove("show"); });
 }
 
 /* ---------- changelog ---------- */
@@ -1333,7 +1350,7 @@ function bGuess() {
   const colText = (i) => bData.slice(0, 30).map((r) => r[i] || "");
   const guess = {
     name: find(/наимен|назван|имя|фио|контрагент|компани|организац|судно|корабль|name|company|entity|vessel|counterparty|organisation|organization/),
-    id: find(/\bинн\b|инн\b|огрн|\bimo\b|\binn\b|ogrn|идентификатор|номер\s*док|паспорт|борт|tail|\breg\b|document|tax\s*id|registration/),
+    id: find(/имо|инн|огрн|\bimo\b|\binn\b|ogrn|идентификатор|номер|number|паспорт|passport|борт|tail|\breg\b|document|tax\s*id|registration/),
     dob: find(/дата\s*рожд|д\.?\s*р\.?|birth|\bdob\b/),
     country: find(/страна|country|гражданств|nationality/),
   };
@@ -1353,12 +1370,44 @@ function bGuess() {
 
 // --- UI сопоставления ---
 const B_FIELDS = ["name", "id", "dob", "country"];
+const B_TYPES = ["any", "vessel", "entity", "person", "aircraft"];
+function bGuessType(guess) { // авто-тип: заголовок → содержимое колонок
+  const hId = guess.id >= 0 ? norm(bHeaders[guess.id] || "") : "";
+  const hName = guess.name >= 0 ? norm(bHeaders[guess.name] || "") : "";
+  // 1) заголовки
+  if (/имо|\bimo\b/.test(hId)) return "vessel";
+  if (/борт|tail|serial/.test(hId)) return "aircraft";
+  if (/инн|огрн|\binn\b|ogrn|tax\s*id/.test(hId)) return "entity";
+  if (/судно|корабль|танкер|vessel|ship/.test(hName)) return "vessel";
+  if (/фио|passenger|employee|individual|person/.test(hName)) return "person";
+  // 2) содержимое id-колонки
+  if (guess.id >= 0) {
+    const cells = bData.slice(0, 30).map((r) => (r[guess.id] || "").trim()).filter(Boolean);
+    if (cells.length) {
+      const numeric = cells.filter((c) => /^[\d\s-]+$/.test(c));
+      if (numeric.length / cells.length > 0.7) {
+        const d = numeric.map((c) => c.replace(/\D/g, ""));
+        if (d.filter((x) => x.length === 7).length / numeric.length > 0.7) return "vessel";  // IMO — 7 цифр
+        if (d.filter((x) => x.length === 13).length / numeric.length > 0.7) return "entity"; // ОГРН — 13 цифр
+      }
+      if (cells.filter((c) => /^(ra|rf|er|ep|vq|9m|n\d)/i.test(c)).length / cells.length > 0.5) return "aircraft";
+    }
+  }
+  // 3) дата рождения → физлицо
+  if (guess.dob >= 0) return "person";
+  return "any";
+}
 function bRenderMap() {
   const guess = bGuess();
   const opts = (sel) => `<option value="-1">${t("b_map_skip")}</option>` +
     bHeaders.map((h, i) => `<option value="${i}"${i === sel ? " selected" : ""}>${esc(h || "—")}</option>`).join("");
-  bEls.map.innerHTML = B_FIELDS.map((f) =>
-    `<label><span>${t("b_map_" + f)}</span><select data-f="${f}">${opts(guess[f])}</select></label>`).join("");
+  const infoBtn = (tip) =>
+    `<button class="info-i adv-info" type="button" data-tip="${tip}" aria-label="i"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10.5" fill="none" stroke="currentColor" stroke-width="1.6"/><line x1="12" y1="10.5" x2="12" y2="16.5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><circle cx="12" cy="7.2" r="1.3" fill="currentColor"/></svg></button>`;
+  bEls.map.innerHTML =
+    `<label><span>${t("b_map_type")}</span><select id="bType">${B_TYPES.map((ty) =>
+      `<option value="${ty === "any" ? "" : ty}"${ty === bGuessType(guess) ? " selected" : ""}>${t("b_type_" + ty)}</option>`).join("")}</select></label>` +
+    B_FIELDS.map((f) =>
+    `<label><span>${t("b_map_" + f)}${f === "id" ? infoBtn("b_map_id_hint") : ""}</span><select data-f="${f}">${opts(guess[f])}</select></label>`).join("");
   const ncol = bHeaders.length;
   const head = bHeaders.map((h) => `<th>${esc(h || "—")}</th>`).join("");
   const body = bData.slice(0, 5).map((r) =>
@@ -1373,10 +1422,11 @@ function bMapping() {
   return m;
 }
 function refreshBRun() {
-  const m = bEls.map.querySelectorAll("select").length ? bMapping() : { name: -1 };
-  bEls.run.disabled = !ALL || m.name < 0;
+  const m = bEls.map.querySelectorAll("select").length ? bMapping() : { name: -1, id: -1 };
+  const ok = m.name >= 0 || m.id >= 0;
+  bEls.run.disabled = !ALL || !ok;
   bEls.run.textContent = ALL ? t("b_run") : t("b_wait");
-  bEls.run.title = m.name < 0 ? t("b_need_name") : "";
+  bEls.run.title = !ok ? t("b_need_name") : "";
 }
 
 // --- страна: свободный текст → код записи ---
@@ -1400,8 +1450,8 @@ function bCountryCode(s) {
 }
 
 // --- матчинг одной строки ---
-function bMatchOne(nm, idq, dob, cc) {
-  const pool = ALL;
+function bMatchOne(nm, idq, dob, cc, typ) {
+  const pool = typ ? ALL.filter((e) => e.type === typ) : ALL;
   // точное совпадение по идентификатору
   if (idq && idq.length >= 5) {
     for (const e of pool) {
@@ -1412,6 +1462,8 @@ function bMatchOne(nm, idq, dob, cc) {
   }
   const qNorm = norm(nm);
   if (qNorm.length < 2) return null;
+  // идентификатор задан, но в списках не найден: чисто «именное» совпадение недостоверно
+  const idMiss = !!(idq && idq.length >= 5);
   const tokenSets = [tokens(qNorm)];
   const lat = tokens(translit(qNorm));
   if (lat.join(" ") !== tokenSets[0].join(" ")) tokenSets.push(lat);
@@ -1431,6 +1483,7 @@ function bMatchOne(nm, idq, dob, cc) {
     for (const set of tokenSets) { if (hit) break; for (const qt of set) if (hay.includes(qt)) { hit = true; break; } }
     if (!hit) continue;
     let s = scoreEntity(tokenSets, qNorm, e);
+    if (idMiss && s > 0.84) s = 0.84;
     if (!best || s > best.score) best = { e, score: s, idm: false };
   }
   return best;
@@ -1439,17 +1492,19 @@ function bMatchOne(nm, idq, dob, cc) {
 // --- запуск ---
 async function bRunBatch() {
   const m = bMapping();
-  if (m.name < 0 || !ALL) return;
+  if ((m.name < 0 && m.id < 0) || !ALL) return;
+  const bTypeEl = document.getElementById("bType");
+  const bType = bTypeEl ? bTypeEl.value : "";
   bEls.run.disabled = true;
   const out = [];
   const n = bData.length;
   for (let i = 0; i < n; i++) {
     const r = bData[i];
-    const nm = (r[m.name] || "").trim();
+    const nm = m.name >= 0 ? (r[m.name] || "").trim() : "";
     const idq = m.id >= 0 ? alnum(r[m.id] || "").slice(0, 12) : "";
     const dob = m.dob >= 0 ? parseDobQuery(r[m.dob] || "") : null;
     const cc = m.country >= 0 ? bCountryCode(r[m.country]) : null;
-    const res = nm ? bMatchOne(nm, idq, dob, cc) : null;
+    const res = (nm || idq) ? bMatchOne(nm, idq, dob, cc, bType) : null;
     const score = res ? res.score : 0;
     out.push({
       row: r, e: res ? res.e : null, score, idm: !!(res && res.idm),
