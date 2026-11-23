@@ -51,6 +51,14 @@ SOURCES = {
         "file": "eu.csv",
         "via": "OpenSanctions (нормализация официального списка ЕС)",
     },
+    # «Теневой флот» ЕС: суда под ст. 3s Регламента 833/2014 (Annex XLII/IV) —
+    # запрет захода в порты ЕС и морские услуги (НЕ заморозка активов, поэтому их нет в FSF).
+    "EUMARE": {
+        "name": "EU Designated Vessels, ст. 3s Регл. 833/2014 (ЕС, теневой флот)",
+        "url": "https://data.opensanctions.org/datasets/latest/eu_journal_sanctions/targets.simple.csv",
+        "file": "eu_journal.csv",
+        "via": "OpenSanctions EU Journal (транскрипция аннексов EUR-Lex)",
+    },
     "UN": {
         "name": "UN SC Consolidated List (ООН)",
         "url": "https://scsanctions.un.org/resources/xml/en/consolidated.xml",
@@ -279,7 +287,7 @@ PROGRAM_GROUPS = [
     ("Зимбабве", r"ZIMBABWE|\bZIM\b"),
     ("Африка (Мали, ЦАР, Конго)", r"MALI|CAR\b|CENTRAL AFRICAN|DRCONGO|\bCOD\b|CONGO"),
     ("Непролиферация", r"NPWMD|WMD|PROLIF|ITSR"),
-    ("Морские / теневой флот", r"PIRACY|MARITIME|\(VESSELS\)|VESSELS\) -"),
+    ("Морские / теневой флот", r"PIRACY|MARITIME|\(VESSELS\)|VESSELS\) -|ART\. 3S|833/2014"),
 ]
 _PROG_RE = [(g, re.compile(p, re.I)) for g, p in PROGRAM_GROUPS]
 
@@ -474,6 +482,34 @@ def parse_un(path):
     return out
 
 
+def parse_eumare(path):
+    """EU Journal Sanctions -> только суда под ст. 3s Регл. 833/2014 (Annex XLII/IV).
+    Мера — запрет захода в порты ЕС и морские услуги (port_ban), НЕ заморозка активов.
+    Дата включения извлекается из хвоста текста меры ('... - YYYY-MM-DD')."""
+    out = []
+    with open(path, newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            if (row.get("schema") or "").lower() != "vessel":
+                continue
+            sanc = clean(row.get("sanctions", ""))
+            if not sanc.startswith("Article 3s"):
+                continue
+            m = re.search(r"(\d{4}-\d{2}-\d{2})\s*$", sanc)
+            out.append(entity(
+                id=f"EUMARE-{row.get('id','')}", source="EUMARE", type="vessel",
+                name=clean(row.get("name", "")),
+                aliases=(row.get("aliases") or "").split(";"),
+                countries=(row.get("countries") or "").split(";"),
+                programs=["EU-RUS Art. 3s (Reg. 833/2014)"],
+                identifiers=(row.get("identifiers") or "").split(";")[:10],
+                listed_on=m.group(1) if m else "",
+                listed_on_kind="official" if m else "",
+                remarks=sanc[:500],
+                measures=["port_ban"],
+            ))
+    return out
+
+
 def parse_os_csv(path, source):
     """OpenSanctions targets.simple.csv for AU/JP."""
     out = []
@@ -578,7 +614,7 @@ def fetch_source(key, parser, src=None, note=""):
 
 def main():
     parsers = {"US": parse_us, "UK": parse_uk, "UN": parse_un,
-               "EU": lambda p: parse_os_csv(p, "EU"),
+               "EU": lambda p: parse_os_csv(p, "EU"), "EUMARE": parse_eumare,
                "AU": lambda p: parse_os_csv(p, "AU"), "JP": lambda p: parse_os_csv(p, "JP"),
                "CA": lambda p: parse_os_csv(p, "CA"), "CH": lambda p: parse_os_csv(p, "CH")}
     all_entities = []
@@ -727,9 +763,12 @@ def main():
         names[e["id"]] = e["name"]
     changes = {}
     for src in SOURCES:
-        added = sorted(cur[src] - set(prev.get(src, [])))
-        removed = sorted(set(prev.get(src, [])) - cur[src])
-        if prev.get(src) is not None and (added or removed):
+        prev_src = prev.get(src)
+        added = sorted(cur[src] - set(prev_src or []))
+        removed = sorted(set(prev_src or []) - cur[src])
+        # prev_src is None при непустом prev = источник добавлен в пайплайн сейчас:
+        # весь его срез фиксируем в аудит-трейле как added
+        if (prev_src is not None or prev) and (added or removed):
             changes[src] = {
                 "added": [{"id": i, "name": names.get(i, "")} for i in added],
                 "removed": [{"id": i, "name": prev_names.get(i, "")} for i in removed],

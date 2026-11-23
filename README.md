@@ -1,6 +1,6 @@
 # SanctionsWatch
 
-Агрегатор санкционных списков (US OFAC · UK UKSL · EU FSF · UN SC · CA GAC · CH SECO · AU DFAT · JP MOF) с интерактивным дашбордом (карта мира, сквозные фильтры), фаззи-скринингом контрагентов и журналом изменений.
+Агрегатор санкционных списков (US OFAC · UK UKSL · EU FSF + суда ст. 3s · UN SC · CA GAC · CH SECO · AU DFAT · JP MOF) с интерактивным дашбордом (карта мира, сквозные фильтры), фаззи-скринингом контрагентов и журналом изменений.
 
 ## UX
 
@@ -50,6 +50,7 @@ python3 pipeline/build_data.py             # использовать кеш dat
 | US | OFAC SDN | официальный API, XML |
 | UK | UK Sanctions List (FCDO) | статичный URL, XML |
 | EU | Consolidated FSF (DG FISMA) | публичный токен, XML |
+| EUMARE | EU Designated Vessels — ст. 3s Регл. 833/2014 (Annex XLII/IV, «теневой флот»: запрет захода в порты и морские услуги, НЕ заморозка активов) | через OpenSanctions EU Journal (транскрипция аннексов EUR-Lex) |
 | UN | SC Consolidated List | XML |
 | AU | DFAT Consolidated List | через OpenSanctions (официальный — XLSX) |
 | JP | MOF Economic Sanctions | через OpenSanctions (официальный — XLSX, японский) |
