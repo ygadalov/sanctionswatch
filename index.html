@@ -7,8 +7,8 @@
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link rel="preload" href="fonts/inter-cyrillic.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="fonts.css?v=202611231333">
-<link rel="stylesheet" href="styles.css?v=202611231333">
+<link rel="stylesheet" href="fonts.css?v=202611241530">
+<link rel="stylesheet" href="styles.css?v=202611241530">
 </head>
 <body>
 <header class="top">
@@ -51,13 +51,12 @@
     <div class="chips" id="chips"></div>
     <div class="statrow" id="statrow"></div>
     <div class="panel" style="margin-top:24px">
-      <h2 class="panel-title" data-i18n="map_title"></h2>
+      <h2 class="panel-title"><span data-i18n="map_title"></span><button class="info-i adv-info" type="button" data-tip="map_hint" aria-label="i"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10.5" fill="none" stroke="currentColor" stroke-width="1.6"/><line x1="12" y1="10.5" x2="12" y2="16.5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><circle cx="12" cy="7.2" r="1.3" fill="currentColor"/></svg></button></h2>
       <div class="mapwrap">
         <svg id="worldmap" viewBox="0 0 1000 470" role="img"></svg>
         <div id="mapTip"></div>
       </div>
       <div class="maplegend"><span>0</span><span class="grad"></span><span id="mapMax"></span></div>
-      <div class="maphint" data-i18n="map_hint"></div>
     </div>
     <div class="pair-grid">
       <div class="panel">
@@ -80,9 +79,8 @@
       </div>
     </div>
     <div class="panel" style="margin-top:24px">
-      <h2 class="panel-title" data-i18n="years_title"></h2>
+      <h2 class="panel-title"><span data-i18n="years_title"></span><button class="info-i adv-info" type="button" data-tip="years_hint" aria-label="i"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10.5" fill="none" stroke="currentColor" stroke-width="1.6"/><line x1="12" y1="10.5" x2="12" y2="16.5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><circle cx="12" cy="7.2" r="1.3" fill="currentColor"/></svg></button></h2>
       <div id="yearChart"></div>
-      <div class="maphint" data-i18n="years_hint"></div>
     </div>
   </section>
 
@@ -194,6 +192,6 @@
 
 <div class="info-tip" id="advTip" role="tooltip"></div>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="app.js?v=202611231333"></script>
+<script src="app.js?v=202611241530"></script>
 </body>
 </html>
