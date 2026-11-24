@@ -2,8 +2,11 @@ name: Update sanctions data
 
 on:
   schedule:
-    # Раз в сутки ночью по Москве: 00:30 UTC = 03:30 МСК
+    # Основной слот: 00:30 UTC = 03:30 МСК
     - cron: "30 0 * * *"
+    # Резервные слоты (если GitHub пропустит основной из-за нагрузки)
+    - cron: "30 2 * * *"   # 05:30 МСК
+    - cron: "30 4 * * *"   # 07:30 МСК
   workflow_dispatch:
 
 permissions:
@@ -19,12 +22,25 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Skip if data already updated today
+        id: guard
+        run: |
+          TODAY=$(date -u +%Y-%m-%d)
+          if git log --since="$TODAY 00:00:00 +0000" --grep="\[data-update\] $TODAY" --oneline | grep -q .; then
+            echo "Data already updated today, skipping rebuild"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Rebuild data (refresh all sources)
+        if: github.event_name != 'schedule' || steps.guard.outputs.skip != 'true'
         env:
           REFRESH: "1"
         run: python3 pipeline/build_data.py
 
       - name: Commit if changed
+        if: github.event_name != 'schedule' || steps.guard.outputs.skip != 'true'
         run: |
           git config user.name "sanctions-bot"
           git config user.email "actions@github.com"
