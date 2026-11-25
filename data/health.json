@@ -1,5 +1,5 @@
 {
- "generated_at": "2026-11-24T09:31:44+00:00",
+ "generated_at": "2026-11-25T09:00:38+00:00",
  "guard": "",
  "sources": {
   "US": {
@@ -15,7 +15,7 @@
    "name": "UK Sanctions List (Великобритания)",
    "url": "https://sanctionslist.fcdo.gov.uk/docs/UK-Sanctions-List.xml",
    "status": "ok",
-   "records": 6453,
+   "records": 6457,
    "error": "",
    "note": "",
    "cached": false
