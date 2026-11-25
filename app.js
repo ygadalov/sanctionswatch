@@ -311,8 +311,11 @@ const PROGRAM_GROUPS = [
   ["Magnitsky / права человека", /MAGNIT|GLOMAG|GLOBAL HUMAN RIGHTS|HRIT|\bHR\b/i],
   ["Сирия", /SYRIA|CAESAR|\bSYR\b|EO13894/i],
   ["Ирак", /IRAQ|\bIRQ\b/i],
-  ["Йемен", /YEMEN|\bYEM\b/i],
+  ["Венесуэла", /VENEZUELA|\bVEN\b/i],
+  ["Куба", /CUBA/i],
   ["Ливия", /LIBYA|\bLYB\b/i],
+  ["Йемен", /YEMEN|\bYEM\b/i],
+  ["Сомали", /SOMALIA|\bSOM\b/i],
   ["Судан / Юж. Судан", /SUDAN|\bSDN\b/i],
   ["Мьянма", /MYANMAR|BURMA|\bMMR\b/i],
   ["Афганистан", /AFGHAN|\bAFG\b/i],
@@ -1135,7 +1138,7 @@ function renderDetail() {
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
-// нормализация написания IMO при показе: источники пишут и «IMO9274800», и «IMO 9906544"
+// нормализация написания IMO при показе: источники пишут и «IMO9274800», и «IMO 9906544»
 function escIds(s) { return esc(s).replace(/\bIMO\s?(\d{7})\b/gi, "IMO $1"); }
 // дата ISO → локальный формат: RU ДД.ММ.ГГГГ, EN MM/DD/YYYY (неполные даты — как есть)
 function fmtDate(iso) {
