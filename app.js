@@ -111,6 +111,7 @@ const I18N = {
     b_th_date: "Включён", b_th_programs: "Программы", b_th_measures: "Меры",
     b_shown: "показаны первые 300 из",
     b_rows: "строк",
+    b_colrsz: "Потяните, чтобы изменить ширину столбца",
     b_err: "Не удалось прочитать файл. Поддерживаются XLSX, XLS и CSV.",
     b_need_name: "Укажите колонку с названием или идентификатором — без них проверка невозможна.",
     b_wait: "Дождитесь загрузки данных…",
@@ -214,6 +215,7 @@ const I18N = {
     b_th_date: "Listed", b_th_programs: "Programs", b_th_measures: "Measures",
     b_shown: "showing first 300 of",
     b_rows: "rows",
+    b_colrsz: "Drag to resize the column",
     b_err: "Could not read the file. XLSX, XLS and CSV are supported.",
     b_need_name: "Map a name or identifier column — screening is impossible without one.",
     b_wait: "Waiting for data to load…",
@@ -1229,7 +1231,7 @@ advEls.country.addEventListener("change", () => { refreshAdvN(); search(qEl.valu
 document.getElementById("advReset").addEventListener("click", () => {
   advEls.dob.value = ""; advEls.doc.value = ""; advEls.imo.value = ""; advEls.country.value = "";
   advTip.classList.remove("show");
-  refreshAdvN(); search(qEl.value); qEl.focus();
+  refreshAdvN(); search(""); qEl.focus();
 });
 
 /* --- тултипы (i) у подписей полей доп. фильтров и заголовка «Типы мер» --- */
@@ -1623,6 +1625,56 @@ function bRender() {
     }).join("") +
     (rows.length > 300 ? `<tr><td colspan="10" class="muted">${t("b_shown")} ${rows.length} ${t("b_rows")}</td></tr>` : "");
   bEls.fileInfo.textContent = `${bFileName} · ${bResults.length} ${t("b_rows")}`;
+  bInitColResize();
+}
+
+// --- регулируемая ширина столбцов (перетаскивание границы в заголовке) ---
+function bInitColResize() {
+  const tbl = bEls.resTable;
+  // таблица перерисована (фильтры/новый прогон): сбрасываем фиксированный режим
+  tbl.classList.remove("fixed");
+  tbl.style.width = "";
+  const ths = [...tbl.querySelectorAll("tr:first-child th")];
+  ths.forEach((th, idx) => {
+    if (idx === ths.length - 1) return;
+    const h = document.createElement("span");
+    h.className = "colrsz";
+    h.title = t("b_colrsz");
+    h.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!tbl.querySelector("colgroup")) {
+        const cg = document.createElement("colgroup");
+        ths.forEach((x) => {
+          const c = document.createElement("col");
+          c.style.width = x.getBoundingClientRect().width + "px";
+          cg.appendChild(c);
+        });
+        tbl.insertBefore(cg, tbl.firstChild);
+      }
+      tbl.classList.add("fixed");
+      const col = tbl.querySelectorAll("colgroup col")[idx];
+      const startX = e.clientX;
+      const startW = col.getBoundingClientRect().width;
+      const tblStartW = tbl.getBoundingClientRect().width;
+      document.body.classList.add("colresizing");
+      const move = (ev) => {
+        const w = Math.max(40, startW + ev.clientX - startX);
+        col.style.width = w + "px";
+        tbl.style.width = tblStartW + (w - startW) + "px";
+      };
+      const up = () => {
+        document.removeEventListener("pointermove", move, true);
+        document.removeEventListener("pointerup", up, true);
+        document.removeEventListener("pointercancel", up, true);
+        document.body.classList.remove("colresizing");
+      };
+      document.addEventListener("pointermove", move, true);
+      document.addEventListener("pointerup", up, true);
+      document.addEventListener("pointercancel", up, true);
+    });
+    th.appendChild(h);
+  });
 }
 
 // --- экспорт ---
