@@ -1,5 +1,5 @@
 {
- "generated_at": "2026-11-25T09:00:38+00:00",
+ "generated_at": "2026-11-26T08:47:56+00:00",
  "guard": "",
  "sources": {
   "US": {
@@ -24,7 +24,7 @@
    "name": "UN SC Consolidated List (ООН)",
    "url": "https://scsanctions.un.org/resources/xml/en/consolidated.xml",
    "status": "ok",
-   "records": 1007,
+   "records": 1008,
    "error": "",
    "note": "",
    "cached": false
@@ -51,7 +51,7 @@
    "name": "DFAT Consolidated List (Австралия)",
    "url": "https://data.opensanctions.org/datasets/latest/au_dfat_sanctions/targets.simple.csv",
    "status": "ok",
-   "records": 3911,
+   "records": 3912,
    "error": "",
    "note": "",
    "cached": false
