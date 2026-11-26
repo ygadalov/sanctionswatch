@@ -1,450 +1,896 @@
 #!/usr/bin/env python3
 """
-SanctionsWatch — сборка данных для статического фронтенда.
+Sanctions Aggregator - data ingestion pipeline.
 
-Источники:
-  1. OpenSanctions datasets `us_ofac_sdn`, `us_ofac_cons`, `eu_fsf`, `gb_hmt_sanctions`,
-     `ch_seco_sanctions`, `un_sc_sanctions`, `au_dfat_sanctions`,
-     `ca_dfatd_sema_sanctions`, `jp_mof_sanctions`, `eu_mare`
-     (FTM JSON — один JSON-объект FollowTheMoney на строку).
-     Скачиваются с data.opensanctions.org, кэшируются в data/raw/<source>.json
-     и при недоступности сети переиспользуются.
+Downloads official sanctions lists (OFAC SDN, UK UKSL, EU FSF, UN SC)
+plus OpenSanctions-normalized datasets for Australia (DFAT) and Japan (MOF),
+normalizes them into a single JSON schema and produces:
 
-Выход:
-  data/entities/all.json          — плоский массив всех сущностей
-  data/entities/index.json        — метаданные (дата, источники, статистика)
-  data/changelog/changes.jsonl    — журнал изменений между сборками
-  data/changelog/latest.json      — сводка последней сборки
+  data/stats.json            - aggregate statistics for the dashboard
+  data/entities/<shard>.json - entity shards keyed by first name character
+  data/changelog.jsonl       - append-only log of added/removed entries
 
-Идемпотентно: при повторном запуске без изменений источников
-перезаписывает только all.json/index.json, changelog не растёт.
+Run:  python3 pipeline/build_data.py
+Deps: python3.10+ stdlib only (xml, csv, json, urllib).
 """
 
-import hashlib
+import csv
 import io
 import json
 import os
 import re
 import sys
-import time
 import unicodedata
 import urllib.request
-import zipfile
+import xml.etree.ElementTree as ET
+from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 RAW = ROOT / "data" / "raw"
-ENT = ROOT / "data" / "entities"
-LOG = ROOT / "data" / "changelog"
-for d in (RAW, ENT, LOG):
-    d.mkdir(parents=True, exist_ok=True)
+OUT = ROOT / "data"
+UA = {"User-Agent": "Mozilla/5.0 (compatible; SanctionsAggregator/1.0)"}
 
-UA = "SanctionsWatch/1.0 (+static sanctions aggregator; public lists only)"
-
-# Наборы OpenSanctions -> наш короткий код источника.
-OS_SOURCES = {
-    "us_ofac_sdn":            "US",
-    "us_ofac_cons":           "US",
-    "eu_fsf":                 "EU",
-    "eu_mare":                "EUMARE",
-    "gb_hmt_sanctions":       "UK",
-    "ch_seco_sanctions":      "CH",
-    "un_sc_sanctions":        "UN",
-    "au_dfat_sanctions":      "AU",
-    "ca_dfatd_sema_sanctions":"CA",
-    "jp_mof_sanctions":       "JP",
+SOURCES = {
+    "US": {
+        "name": "OFAC SDN + Consolidated (США)",
+        "url": "https://sanctionslistservice.ofac.treas.gov/api/download/sdn.xml",
+        "file": "ofac_sdn.xml",
+    },
+    "UK": {
+        "name": "UK Sanctions List (Великобритания)",
+        "url": "https://sanctionslist.fcdo.gov.uk/docs/UK-Sanctions-List.xml",
+        "file": "uk.xml",
+    },
+    # Официальный XML EC (webgate.ec.europa.eu/.../xmlFullSanctionsList_1_1) нестабилен:
+    # соединение обрывается на ~5.8 МБ. Используем ежедневную нормализацию OpenSanctions.
+    "EU": {
+        "name": "EU Consolidated FSF (ЕС)",
+        "url": "https://data.opensanctions.org/datasets/latest/eu_fsf/targets.simple.csv",
+        "file": "eu.csv",
+        "via": "OpenSanctions (нормализация официального списка ЕС)",
+    },
+    # «Теневой флот» ЕС: суда под ст. 3s Регламента 833/2014 (Annex XLII/IV) —
+    # запрет захода в порты ЕС и морские услуги (НЕ заморозка активов, поэтому их нет в FSF).
+    "EUMARE": {
+        "name": "EU Designated Vessels, ст. 3s Регл. 833/2014 (ЕС, теневой флот)",
+        "url": "https://data.opensanctions.org/datasets/latest/eu_journal_sanctions/targets.simple.csv",
+        "file": "eu_journal.csv",
+        "via": "OpenSanctions EU Journal (транскрипция аннексов EUR-Lex)",
+    },
+    "UN": {
+        "name": "UN SC Consolidated List (ООН)",
+        "url": "https://scsanctions.un.org/resources/xml/en/consolidated.xml",
+        "file": "un.xml",
+    },
+    "AU": {
+        "name": "DFAT Consolidated List (Австралия)",
+        "url": "https://data.opensanctions.org/datasets/latest/au_dfat_sanctions/targets.simple.csv",
+        "file": "au.csv",
+        "via": "OpenSanctions (нормализация официального списка DFAT)",
+    },
+    "JP": {
+        "name": "MOF Economic Sanctions (Япония)",
+        "url": "https://data.opensanctions.org/datasets/latest/jp_mof_sanctions/targets.simple.csv",
+        "file": "jp.csv",
+        "via": "OpenSanctions (нормализация официального списка MOF)",
+    },
+    "CA": {
+        "name": "Canadian Consolidated Autonomous Sanctions (Канада)",
+        "url": "https://data.opensanctions.org/datasets/latest/ca_dfatd_sema_sanctions/targets.simple.csv",
+        "file": "ca.csv",
+        "via": "OpenSanctions (нормализация официального списка Global Affairs Canada)",
+    },
+    "CH": {
+        "name": "SECO Sanctions (Швейцария)",
+        "url": "https://data.opensanctions.org/datasets/latest/ch_seco_sanctions/targets.simple.csv",
+        "file": "ch.csv",
+        "via": "OpenSanctions (нормализация официального списка SECO)",
+    },
 }
 
-SOURCES_META = {
-    "US":    {"name": "OFAC SDN + Consolidated", "org": "U.S. Treasury", "country": "США"},
-    "EU":    {"name": "EU Consolidated (FSF)", "org": "European Commission", "country": "ЕС"},
-    "EUMARE": {"name": "MARE · Суда теневого флота", "org": "European Union", "country": "ЕС"},
-    "UK":    {"name": "UK Sanctions List", "org": "OFSI / FCDO", "country": "Великобритания"},
-    "CH":    {"name": "SECO Sanctions", "org": "SECO", "country": "Швейцария"},
-    "UN":    {"name": "UN Security Council", "org": "United Nations", "country": "ООН"},
-    "AU":    {"name": "DFAT Consolidated", "org": "DFAT", "country": "Австралия"},
-    "CA":    {"name": "SEMA Sanctions", "org": "Global Affairs Canada", "country": "Канада"},
-    "JP":    {"name": "MOF Sanctions", "org": "Ministry of Finance", "country": "Япония"},
+
+# OFAC Consolidated (non-SDN): SSI / NS-CMIC / NS-PLC / CAPTA / NS-MBS.
+# Качается отдельно, записи получают source="US" и measures=["non_sdn", <подтип>].
+US_CONS = {
+    "url": "https://sanctionslistservice.ofac.treas.gov/api/download/consolidated.xml",
+    "file": "ofac_cons.xml",
+}
+# OpenSanctions-зеркало SDN: используется ТОЛЬКО для дат first_seen (OFAC не публикует
+# дату включения в машинном виде). Джойн к нашим US-записям — по IMO (суда).
+US_OS = {
+    "url": "https://data.opensanctions.org/datasets/latest/us_ofac_sdn/targets.simple.csv",
+    "file": "us_os.csv",
+}
+# Полный экспорт SECO: в targets.simple.csv поле notes с IMO не попадает.
+# Используется только для обогащения идентификаторов, сбой не останавливает основную сборку.
+CH_FULL = {
+    "url": "https://data.opensanctions.org/datasets/latest/ch_seco_sanctions/entities.ftm.json",
+    "file": "ch_full.jsonl",
+}
+# Подтип non-SDN по коду программы (legacy XML не содержит имени подсписка)
+CONS_KIND = {
+    "UKRAINE-EO13662": "ssi",      # Sectoral Sanctions Identifications
+    "CMIC-EO13959": "cmic",        # Chinese Military-Industrial Complex
+    "NS-PLC": "ns_plc",            # Palestinian Legislative Council
+    "HKAA": "capta",               # Hong Kong Autonomy Act -> CAPTA
+    "PAIPA": "capta",              # CAPTA list
 }
 
 
-def log(*a):
-    print(f"[{datetime.now(timezone.utc).strftime('%H:%M:%S')}]", *a, flush=True)
+def log(msg):
+    print(f"[{datetime.now(timezone.utc):%H:%M:%S}] {msg}", flush=True)
 
 
-def fetch(url, dest, binary=False):
-    """Скачать с кэшем: при ошибке сети используем прошлый файл."""
-    req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept-Encoding": "identity"})
-    try:
-        with urllib.request.urlopen(req, timeout=300) as r:
-            data = r.read()
-        dest.write_bytes(data)
-        log(f"  OK {url} -> {dest.name} ({len(data):,} bytes)")
-        return data
-    except Exception as e:
-        if dest.exists():
-            log(f"  NET-FAIL {url}: {e}; использую кэш {dest.name}")
-            return dest.read_bytes()
-        raise
+def download(key, src=None):
+    src = src or SOURCES[key]
+    dest = RAW / src["file"]
+    RAW.mkdir(parents=True, exist_ok=True)
+    if dest.exists() and dest.stat().st_size > 10_000 and os.environ.get("REFRESH") != "1":
+        log(f"{key}: использую кеш {dest.name}")
+        return dest
+    log(f"{key}: скачиваю {src['url']}")
+    req = urllib.request.Request(src["url"], headers=UA)
+    with urllib.request.urlopen(req, timeout=300) as r, open(dest, "wb") as f:
+        f.write(r.read())
+    log(f"{key}: {dest.stat().st_size / 1e6:.1f} МБ")
+    return dest
 
 
-def norm(s):
+def clean(s):
     if not s:
         return ""
-    s = unicodedata.normalize("NFKD", str(s))
-    s = "".join(c for c in s if not unicodedata.combining(c))
-    s = s.lower().replace("ё", "е")
-    s = re.sub(r"[^a-zа-я0-9]+", " ", s, flags=re.I)
     return re.sub(r"\s+", " ", s).strip()
 
 
-def first(props, key):
-    v = props.get(key)
-    if isinstance(v, list) and v:
-        return v[0]
-    return None
+def norm_key(name):
+    """Normalized matching key: lowercase, no diacritics, no punctuation."""
+    name = unicodedata.normalize("NFKD", name or "")
+    name = "".join(c for c in name if not unicodedata.combining(c))
+    return re.sub(r"[^a-z0-9\u0400-\u04ff ]", "", name.lower()).strip()
 
 
-def allv(props, key):
-    v = props.get(key)
-    return v if isinstance(v, list) else []
+def shard_of(name):
+    k = norm_key(name)
+    if not k:
+        return "other"
+    c = k[0]
+    if "a" <= c <= "z":
+        return c
+    if "0" <= c <= "9":
+        return "0-9"
+    if "\u0400" <= c <= "\u04ff":
+        return "cyrillic"
+    return "other"
 
 
-def sha(s):
-    return hashlib.sha1(s.encode("utf-8", "ignore")).hexdigest()[:16]
+COUNTRY_MAP = {
+    "RUSSIA": "RU", "RUSSIAN FEDERATION": "RU", "IRAN": "IR", "IRAN, ISLAMIC REPUBLIC OF": "IR",
+    "CHINA": "CN", "NORTH KOREA": "KP", "KOREA, DEMOCRATIC PEOPLE'S REPUBLIC OF": "KP",
+    "KOREA, NORTH": "KP", "SOUTH KOREA": "KR", "KOREA, REPUBLIC OF": "KR",
+    "UKRAINE": "UA", "BELARUS": "BY", "SYRIA": "SY", "SYRIAN ARAB REPUBLIC": "SY",
+    "VENEZUELA": "VE", "CUBA": "CU", "MEXICO": "MX", "COLOMBIA": "CO",
+    "UNITED ARAB EMIRATES": "AE", "TURKEY": "TR", "TÜRKIYE": "TR", "CYPRUS": "CY",
+    "UNITED KINGDOM": "GB", "UNITED STATES": "US", "GERMANY": "DE", "FRANCE": "FR",
+    "ITALY": "IT", "SPAIN": "ES", "NETHERLANDS": "NL", "SWITZERLAND": "CH",
+    "AFGHANISTAN": "AF", "IRAQ": "IQ", "LEBANON": "LB", "YEMEN": "YE", "LIBYA": "LY",
+    "SOMALIA": "SO", "SUDAN": "SD", "SOUTH SUDAN": "SS", "MYANMAR": "MM", "BURMA": "MM",
+    "HONG KONG": "HK", "TAIWAN": "TW", "SINGAPORE": "SG", "INDIA": "IN", "PAKISTAN": "PK",
+    "KAZAKHSTAN": "KZ", "KYRGYZSTAN": "KG", "UZBEKISTAN": "UZ", "TAJIKISTAN": "TJ",
+    "ARMENIA": "AM", "AZERBAIJAN": "AZ", "GEORGIA": "GE", "MOLDOVA": "MD",
+    "SERBIA": "RS", "BOSNIA AND HERZEGOVINA": "BA", "MONTENEGRO": "ME", "NORTH MACEDONIA": "MK",
+    "ZIMBABWE": "ZW", "MALI": "ML", "NICARAGUA": "NI", "GUATEMALA": "GT", "HONDURAS": "HN",
+    "PANAMA": "PA", "BRAZIL": "BR", "ARGENTINA": "AR", "EGYPT": "EG", "SAUDI ARABIA": "SA",
+    "QATAR": "QA", "KUWAIT": "KW", "BAHRAIN": "BH", "OMAN": "OM", "JORDAN": "JO",
+    "ISRAEL": "IL", "PALESTINE": "PS", "THAILAND": "TH", "VIETNAM": "VN", "LAOS": "LA",
+    "CAMBODIA": "KH", "MALAYSIA": "MY", "INDONESIA": "ID", "PHILIPPINES": "PH",
+    "JAPAN": "JP", "AUSTRALIA": "AU", "CANADA": "CA", "SOUTH AFRICA": "ZA",
+    "NIGERIA": "NG", "KENYA": "KE", "ETHIOPIA": "ET", "DEMOCRATIC REPUBLIC OF THE CONGO": "CD",
+    "CONGO, DEMOCRATIC REPUBLIC OF THE": "CD", "CENTRAL AFRICAN REPUBLIC": "CF",
+    "MALI ": "ML", "BURUNDI": "BI", "ERITREA": "ER", "GUINEA": "GN", "GUINEA-BISSAU": "GW",
+    "HUNGARY": "HU", "POLAND": "PL", "CZECHIA": "CZ", "CZECH REPUBLIC": "CZ",
+    "SLOVAKIA": "SK", "BULGARIA": "BG", "ROMANIA": "RO", "GREECE": "GR", "AUSTRIA": "AT",
+    "BELGIUM": "BE", "LUXEMBOURG": "LU", "LIECHTENSTEIN": "LI", "MONACO": "MC",
+    "BRITISH VIRGIN ISLANDS": "VG", "VIRGIN ISLANDS, BRITISH": "VG", "CAYMAN ISLANDS": "KY",
+    "MARSHALL ISLANDS": "MH", "LIBERIA": "LR", "MALTA": "MT", "LATVIA": "LV",
+    "LITHUANIA": "LT", "ESTONIA": "EE", "FINLAND": "FI", "SWEDEN": "SE", "NORWAY": "NO",
+    "DENMARK": "DK", "IRELAND": "IE", "PORTUGAL": "PT", "CROATIA": "HR", "SLOVENIA": "SI",
+    "ALBANIA": "AL", "KOSOVO": "XK", "BANGLADESH": "BD", "SRI LANKA": "LK", "NEPAL": "NP",
+    "MONGOLIA": "MN", "NEW ZEALAND": "NZ", "FIJI": "FJ", "PAPUA NEW GUINEA": "PG",
+    "CHAD": "TD", "NIGER": "NE", "BURKINA FASO": "BF", "SENEGAL": "SN", "TOGO": "TG",
+    "EQUATORIAL GUINEA": "GQ", "GABON": "GA", "ANGOLA": "AO", "MOZAMBIQUE": "MZ",
+    "DOMINICAN REPUBLIC": "DO", "HAITI": "HT", "JAMAICA": "JM", "TRINIDAD AND TOBAGO": "TT",
+    "ECUADOR": "EC", "PERU": "PE", "CHILE": "CL", "BOLIVIA": "BO", "PARAGUAY": "PY",
+    "URUGUAY": "UY", "COSTA RICA": "CR", "EL SALVADOR": "SV", "BELIZE": "BZ",
+    "IVORY COAST": "CI", "COTE D'IVOIRE": "CI", "GHANA": "GH", "CAMEROON": "CM",
+    "RWANDA": "RW", "UGANDA": "UG", "TANZANIA": "TZ", "ZAMBIA": "ZM", "MALAWI": "MW",
+}
 
 
-IMO_RE = re.compile(r"(?<!\d)(?:IMO(?:\s*(?:NUMBER|NO))?\s*[:#.-]*\s*)?(\d{7})(?!\d)", re.I)
+def norm_country(c):
+    c = clean(c).upper().rstrip(".")
+    if not c or c in ("UNKNOWN", "UNKNOWN;"):
+        return ""
+    if len(c) == 2 and c.isalpha():
+        return c
+    return COUNTRY_MAP.get(c, c.title() if len(c) > 3 else c)
+
+
+_PAREN_RE = re.compile(r"\s*\([^)]*\)")
+_PAREN_OPEN_RE = re.compile(r"\s*\([^)]*$")
+
+def clean_alias(a):
+    """Убирает служебные пометки источников вида «(previously listed as)» из псевдонимов
+    (включая обрезанные незакрытые скобки)."""
+    return clean(_PAREN_OPEN_RE.sub("", _PAREN_RE.sub(" ", a or "")))
+
+
+def iso_date(s):
+    """Нормализация дат источников к YYYY-MM-DD (UK даёт DD/MM/YYYY, OS — timestamp)."""
+    s = clean(s)
+    if not s:
+        return ""
+    m = re.match(r"(\d{4})-(\d{2})-(\d{2})", s)
+    if m:
+        return m.group(0)
+    m = re.match(r"(\d{1,2})/(\d{1,2})/(\d{4})", s)
+    if m:
+        return f"{m.group(3)}-{int(m.group(2)):02d}-{int(m.group(1)):02d}"
+    return s
+
+
+def entity(**kw):
+    e = {
+        "id": "",
+        "source": "",
+        "type": "unknown",
+        "name": "",
+        "aliases": [],
+        "weak_aliases": [],
+        "countries": [],
+        "programs": [],
+        "dob": "",
+        "identifiers": [],
+        "listed_on": "",
+        "listed_on_kind": "",  # "official" — дата из источника; "os" — first_seen OpenSanctions (прокси)
+        "remarks": "",
+        "measures": [],
+    }
+    e.update({k: v for k, v in kw.items() if k in e})
+    if not e["measures"]:
+        e["measures"] = ["blocking"]
+    e["aliases"] = sorted(set(filter(None, (clean_alias(a) for a in e["aliases"]))))[:30]
+    e["weak_aliases"] = sorted(set(filter(None, (clean_alias(a) for a in e["weak_aliases"]))))[:30]
+    e["countries"] = sorted(set(filter(None, (norm_country(c) for c in e["countries"]))))
+    e["programs"] = sorted(set(clean(p) for p in e["programs"] if clean(p)))[:10]
+    e["identifiers"] = list(dict.fromkeys(clean(i) for i in e["identifiers"] if clean(i)))[:20]
+    return e
+
+
+# Тематические группы санкционных программ (порядок важен — первое совпадение)
+PROGRAM_GROUPS = [
+    ("Россия / Украина", r"RUSSIA|UKRAINE|UKR\b|\bRUS\b|RUSDA|ロシア|クリミア|ウクライナ"),
+    ("Беларусь", r"BELARUS|\bBLR\b"),
+    ("Иран", r"IRAN|\bIRN\b|IFSR"),
+    ("КНДР", r"DPRK|NORTH KOREA|KOREA|\bPRK\b"),
+    ("Терроризм", r"SDGT|FTO|TERROR|AL-QA|ISIS|DAESH|ISIL|TALIBAN|TAQA|タリバーン|アル・カーイダ"),
+    ("Наркотрафик", r"SDNT|NARCOTIC|TCO|FENTANYL|ILLICIT-DRUGS"),
+    ("Кибер", r"CYBER|MALICIOUS CYBER"),
+    ("Magnitsky / права человека", r"MAGNIT|GLOMAG|GLOBAL HUMAN RIGHTS|HRIT|\bHR\b"),
+    ("Сирия", r"SYRIA|CAESAR|\bSYR\b|EO13894"),
+    ("Ирак", r"IRAQ|\bIRQ\b"),
+    ("Венесуэла", r"VENEZUELA|\bVEN\b"),
+    ("Куба", r"CUBA"),
+    ("Ливия", r"LIBYA|\bLYB\b"),
+    ("Йемен", r"YEMEN|\bYEM\b"),
+    ("Сомали", r"SOMALIA|\bSOM\b"),
+    ("Судан / Юж. Судан", r"SUDAN|\bSDN\b"),
+    ("Мьянма", r"MYANMAR|BURMA|\bMMR\b"),
+    ("Афганистан", r"AFGHAN|\bAFG\b"),
+    ("Китай / Синьцзян / Гонконг", r"XINJIANG|HONG KONG|HK-EO|CHINA|XPCC|CMIC"),
+    ("Балканы", r"BALKAN|BOSNIA|SERBIA|KOSOVO"),
+    ("Никарагуа", r"NICARAGUA|\bNIC\b"),
+    ("Зимбабве", r"ZIMBABWE|\bZIM\b"),
+    ("Африка (Мали, ЦАР, Конго)", r"MALI|CAR\b|CENTRAL AFRICAN|DRCONGO|\bCOD\b|CONGO"),
+    ("Непролиферация", r"NPWMD|WMD|PROLIF|ITSR"),
+    ("Морские / теневой флот", r"PIRACY|MARITIME|\(VESSELS\)|VESSELS\) -|ART\. 3S|833/2014"),
+]
+_PROG_RE = [(g, re.compile(p, re.I)) for g, p in PROGRAM_GROUPS]
+
+
+def program_groups(programs, name="", remarks=""):
+    text = " ".join(programs)
+    groups = set()
+    for g, rx in _PROG_RE:
+        if rx.search(text):
+            groups.add(g)
+    return sorted(groups) or ["Прочие / без программы"]
+
+
+def enrich_country(e):
+    """Консервативная доатрибуция страны для записей без страны."""
+    if e["countries"]:
+        return e
+    blob = " ".join(e["identifiers"]) + " " + e["remarks"]
+    if re.search(r"\bOGRN\b|\bОГРН\b", blob, re.I):
+        e["countries"] = ["RU"]
+    elif re.search(r"\bRussia\b|Russian Federation", blob) and "Linked To" not in blob:
+        e["countries"] = ["RU"]
+    return e
+
+
+# ---------------- Parsers ----------------
+
+def parse_us(path, id_prefix="US", measures=None):
+    ns = {"n": "https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/XML"}
+    tree = ET.parse(path)
+    out = []
+    for e in tree.getroot().findall("n:sdnEntry", ns):
+        last = clean(e.findtext("n:lastName", "", ns))
+        first = clean(e.findtext("n:firstName", "", ns))
+        name = clean(f"{first} {last}")
+        typ = {"individual": "person", "entity": "entity", "vessel": "vessel",
+               "aircraft": "aircraft"}.get(clean(e.findtext("n:sdnType", "", ns)).lower(), "entity")
+        aliases, weak_aliases = [], []
+        for a in e.findall(".//n:aka", ns):
+            aka = clean(f"{clean(a.findtext('n:firstName', '', ns))} {clean(a.findtext('n:lastName', '', ns))}")
+            if not aka:
+                continue
+            # category strong/weak — качество псевдонима по OFAC; weak = возможно случайное совпадение
+            if clean(a.findtext("n:category", "", ns)).lower() == "weak":
+                weak_aliases.append(aka)
+            else:
+                aliases.append(aka)
+        countries = [clean(a.findtext("n:country", "", ns)) for a in e.findall(".//n:address", ns)]
+        countries += [clean(nt.findtext("n:country", "", ns)) for nt in e.findall(".//n:nationality", ns)]
+        programs = [clean(p.text) for p in e.findall(".//n:program", ns)]
+        dobs = [clean(d.findtext("n:dateOfBirth", "", ns)) for d in e.findall(".//n:dateOfBirthItem", ns)]
+        ids = []
+        secondary = False
+        for i in e.findall(".//n:id", ns):
+            t, num = clean(i.findtext("n:idType", "", ns)), clean(i.findtext("n:idNumber", "", ns))
+            if "secondary sanctions risk" in t.lower():
+                secondary = True  # это не идентификатор, а маркер вторичных санкций
+                continue
+            if num:
+                ids.append(f"{t}: {num}" if t else num)
+        m = list(measures) if measures else ["blocking"]
+        if secondary:
+            m.append("secondary")
+        if measures:  # non-SDN: определяем подсписок по коду программы
+            kind = next((CONS_KIND[p] for p in programs if p in CONS_KIND), "ns_mbs")
+            m.append(kind)
+        out.append(entity(
+            id=f"{id_prefix}-{e.findtext('n:uid', '', ns)}", source="US", type=typ,
+            name=name, aliases=aliases, weak_aliases=weak_aliases, countries=countries, programs=programs,
+            dob=dobs[0] if dobs else "", identifiers=ids[:10],
+            remarks=clean(e.findtext("n:remarks", "", ns))[:500],
+            measures=m,
+        ))
+    return out
 
 
 def valid_imo(value):
-    """7 цифр + контрольная цифра IMO; отсекает даты и прочие числовые поля."""
-    digits = re.sub(r"\D", "", str(value or ""))
-    if len(digits) != 7:
+    """Проверка семизначного IMO по контрольной цифре IMO A.1078(28)."""
+    if not re.fullmatch(r"\d{7}", value or ""):
         return False
-    return sum(int(digits[i]) * (7 - i) for i in range(6)) % 10 == int(digits[6])
+    return sum(int(value[i]) * (7 - i) for i in range(6)) % 10 == int(value[6])
 
 
 def imo_from_text(text):
-    """IMO из примечаний: строго с маркером IMO, чтобы не подхватить иной номер."""
-    for match in re.finditer(r"\bIMO\s*(?:NUMBER|NO)?\s*[:#.-]*\s*(\d{7})\b", str(text or ""), re.I):
-        if valid_imo(match.group(1)):
-            return match.group(1)
-    return None
+    """IMO только с явной подписью; произвольные семь цифр не извлекаем."""
+    m = re.search(r"(?<![A-Z0-9])IMO(?:\s+number)?\s*[:#]?\s*(\d{7})(?!\d)", text or "", re.I)
+    return m.group(1) if m and valid_imo(m.group(1)) else ""
 
 
 def add_imo(e, value, origin):
-    value = re.sub(r"\D", "", str(value or ""))
+    """Единый нормализованный идентификатор + совместимость со старым identifiers."""
+    value = (value or "").strip()
     if not valid_imo(value):
-        return
-    existing = {str(x.get("value", "")).strip() for x in e["identifiers"]}
-    if value in existing:
-        return
-    e["identifiers"].append({"type": "IMO", "value": value})
-    e["id_details"].append({
-        "kind": "IMO", "label": "IMO",
-        "value": value, "extra": origin,
-    })
-
-
-def parse_ftm(text, src_code):
-    """FTM JSON-lines -> наша компактная схема."""
-    out = []
-    for line in text.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            rec = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if rec.get("schema") not in ("Person", "Organization", "Company", "LegalEntity", "Vessel", "Airplane", "PublicBody", "CryptoWallet"):
-            continue
-        p = rec.get("properties", {})
-        name = first(p, "name")
-        if not name:
-            continue
-        schema = rec["schema"]
-        etype = {"Person": "person", "Vessel": "vessel", "Airplane": "aircraft",
-                 "CryptoWallet": "crypto"}.get(schema, "org")
-
-        aliases = [a for a in allv(p, "alias") + allv(p, "weakAlias") + allv(p, "previousName") if a and a != name]
-        countries = sorted(set(allv(p, "country") + allv(p, "nationality") + allv(p, "jurisdiction")))
-        programs = sorted(set(allv(p, "program") + allv(p, "programId")))
-        dates = sorted(set(allv(p, "listingDate") + allv(p, "createdAt")[:0]))
-        topics = allv(p, "topics")
-        # санкционные меры OpenSanctions хранит в sanctions.* отдельной сущностью;
-        # в targets-* строках попадает notes/summary — возьмём как программу при отсутствии.
-        notes = " ".join(allv(p, "notes") + allv(p, "summary") + allv(p, "reason"))[:1200]
-        measures = []
-        low = notes.lower()
-        if any(k in low for k in ("asset freeze", "замороз", "freez")):
-            measures.append("freeze")
-        if any(k in low for k in ("travel ban", "запрет на въезд", "travel")):
-            measures.append("travel")
-        if any(k in low for k in ("arms embargo", "оружей")):
-            measures.append("arms")
-        if "secondary" in low or "вторич" in low:
-            measures.append("secondary")
-        ids = []
-        id_details = []
-        for key, label in (("innCode", "ИНН"), ("ogrnCode", "ОГРН"), ("passportNumber", "Паспорт"),
-                           ("registrationNumber", "Рег. номер"), ("imoNumber", "IMO"),
-                           ("taxNumber", "Налоговый №"), ("idNumber", "ID"), ("leiCode", "LEI"),
-                           ("swiftBic", "SWIFT/BIC"), ("icijId", "ICIJ ID")):
-            for v in allv(p, key):
-                ids.append({"type": label, "value": v})
-                id_details.append({"kind": key, "label": label, "value": v})
-
-        # Богатые реквизиты: FTM отдаёт по несколько значений на поле.
-        dobs = sorted(set(allv(p, "birthDate")))
-        idds = [v for v in allv(p, "idNumber") if v]
-        pobs = sorted(set(allv(p, "birthPlace")))
-        addrs = sorted(set(allv(p, "address")))
-        emails = sorted(set(allv(p, "email")))
-        phones = sorted(set(allv(p, "phone")))
-        posits = sorted(set(allv(p, "position")))
-        genders = sorted(set(allv(p, "gender")))
-        websites = sorted(set(allv(p, "website")))
-
-        out.append({
-            "id": f"{src_code}:{rec.get('id')}",
-            "src": src_code,
-            "name": name,
-            "nname": norm(name),
-            "type": etype,
-            "aliases": aliases,
-            "naliases": [norm(a) for a in aliases],
-            "countries": countries,
-            "programs": programs,
-            "measures": measures,
-            "dob": dobs[0] if dobs else "",
-            "dobs": dobs,
-            "pob": pobs,
-            "addresses": addrs,
-            "emails": emails,
-            "phones": phones,
-            "positions": posits,
-            "gender": genders,
-            "websites": websites,
-            "id_numbers": idds,
-            "id_details": id_details,
-            "identifiers": ids,
-            "date": first(p, "listingDate") or "",
-            "topics": topics,
-            "notes": notes,
-            "source_url": f"https://www.opensanctions.org/entities/{rec.get('id')}/",
-        })
-    return out
+        return False
+    changed = False
+    ids = e.setdefault("identifiers", [])
+    if not any(re.search(rf"IMO\s*:?\s*{value}(?!\d)", i, re.I) for i in ids):
+        ids.append(f"IMO: {value}")
+        changed = True
+    details = e.setdefault("id_details", [])
+    if not any(d.get("type") == "imo" and d.get("value") == value for d in details):
+        details.append({"type": "imo", "value": value, "origin": origin})
+        changed = True
+    return changed
 
 
 def ch_imo_map(path):
-    """В SECO IMO находится внутри вложенной identification; targets этого не видят."""
-    if not path.exists():
-        return {}
-    imos = {}
-    with path.open(encoding="utf-8") as f:
+    """Карта OpenSanctions entity id → IMO из notes/referents полного FTM-экспорта CH."""
+    out = {}
+    with open(path, encoding="utf-8") as f:
         for line in f:
-            line = line.strip()
-            if not line:
+            if not line.strip():
                 continue
-            try:
-                rec = json.loads(line)
-            except json.JSONDecodeError:
+            obj = json.loads(line)
+            if (obj.get("schema") or "").lower() != "vessel":
                 continue
-            if rec.get("schema") not in ("Vessel", "Organization", "Company", "LegalEntity"):
-                continue
-            ref = (rec.get("properties", {}).get("entity") or [None])[0]
-            if not ref:
-                continue
-            for value in rec.get("properties", {}).get("imoNumber", []):
-                if valid_imo(value):
-                    imos[ref] = re.sub(r"\D", "", value)
-    return imos
-
-
-def enrich_ch_imos(all_entities, path):
-    imos = ch_imo_map(path)
-    if not imos:
-        return 0
-    added = 0
-    for e in all_entities:
-        if e["src"] != "CH":
-            continue
-        os_id = e["id"].split(":", 1)[1]
-        value = imos.get(os_id)
-        before = len(e["identifiers"])
-        add_imo(e, value, "SECO full record")
-        added += len(e["identifiers"]) - before
-    return added
-
-
-def dedupe(all_entities):
-    """Убираем точные дубли (один и тот же объект из двух наборов одного ведомства)."""
-    seen = {}
-    out = []
-    for e in all_entities:
-        key = (e["src"], e["nname"], e["type"], e.get("dob", ""))
-        if key in seen:
-            old = seen[key]
-            # склеиваем алиасы/страны/программы
-            for f in ("aliases", "naliases", "countries", "programs", "measures", "identifiers",
-                      "dobs", "pob", "addresses", "emails", "phones", "positions", "gender", "websites", "id_numbers", "id_details"):
-                merged = old[f] + [x for x in e[f] if x not in old[f]]
-                old[f] = merged
-            if e["date"] and (not old["date"] or e["date"] < old["date"]):
-                old["date"] = e["date"]
-            if e["notes"] and len(e["notes"]) > len(old["notes"]):
-                old["notes"] = e["notes"]
-        else:
-            seen[key] = e
-            out.append(e)
+            found = []
+            props = obj.get("properties") or {}
+            for note in props.get("notes") or []:
+                imo = imo_from_text(note)
+                if imo:
+                    found.append((imo, "ch_full_notes"))
+            for ref in obj.get("referents") or []:
+                m = re.fullmatch(r"imo-vsl-(\d{7})", ref or "", re.I)
+                if m and valid_imo(m.group(1)):
+                    found.append((m.group(1), "ch_full_referents"))
+            if found:
+                out[obj.get("id", "")] = found
     return out
 
 
-def compact(e):
-    """Убрать служебные пустые поля для уменьшения JSON."""
-    return {k: v for k, v in e.items() if v not in ("", [], None)}
+def enrich_ch_imos(all_entities, path):
+    imap = ch_imo_map(path)
+    joined = 0
+    for e in all_entities:
+        if e.get("source") != "CH":
+            continue
+        os_id = e.get("id", "")[3:] if e.get("id", "").startswith("CH-") else ""
+        for imo, origin in imap.get(os_id, []):
+            if add_imo(e, imo, origin):
+                joined += 1
+    return joined, len(imap)
+
+
+def parse_uk(path):
+    tree = ET.parse(path)
+    out = []
+    for d in tree.getroot().findall("Designation"):
+        names = d.findall("./Names/Name")
+        primary, aliases = "", []
+        for n in names:
+            full = clean(" ".join(clean(n.findtext(f"Name{i}", "")) for i in range(1, 7)))
+            if not full:
+                continue
+            if clean(n.findtext("NameType", "")).lower().startswith("primary"):
+                primary = primary or full
+            else:
+                aliases.append(full)
+        for n in d.findall("./NonLatinNames/NonLatinName"):
+            aliases.append(clean(n.findtext("NameNonLatinScript", "")))
+        typ = {"individual": "person", "entity": "entity", "ship": "vessel"}.get(
+            clean(d.findtext("IndividualEntityShip", "")).lower(), "entity")
+        countries = [clean(a.findtext("AddressCountry", "")) for a in d.findall("./Addresses/Address")]
+        countries += [clean(x) for x in d.findtext("Nationalities", "").split(",")]
+        dob = ""
+        if d.find("./IndividualDetails") is not None:
+            bd = d.find("./IndividualDetails//BirthDate")
+            if bd is not None:
+                dob = clean(" ".join(clean(bd.findtext(x, "")) for x in ("Day", "Month", "Year")))
+        ids = []
+        imo = clean(d.findtext("./ShipDetails/IMO", ""))
+        if imo:
+            ids.append(f"IMO: {imo}")
+        uid = clean(d.findtext("UniqueID", ""))
+        reason = clean(d.findtext("UKStatementofReasons", ""))
+        rec = entity(
+            id=f"UK-{uid}", source="UK", type=typ, name=primary, aliases=aliases,
+            countries=countries, programs=[clean(d.findtext("RegimeName", ""))],
+            dob=dob, identifiers=ids,
+            listed_on=iso_date(clean(d.findtext("DateDesignated", ""))),
+            listed_on_kind="official",
+            remarks=reason[:500],
+        )
+        if imo:
+            add_imo(rec, imo, "uk_ship_details")
+        elif typ == "vessel":
+            extracted = imo_from_text(reason)
+            if extracted:
+                add_imo(rec, extracted, "uk_remarks")
+        out.append(rec)
+    return out
+
+
+def parse_eu(path):
+    ns = {"e": "http://eu.europa.ec/fpi/fsd/export"}
+    tree = ET.parse(path)
+    out = []
+    for se in tree.getroot().findall("e:sanctionEntity", ns):
+        typ = {"P": "person", "E": "entity", "None": "entity"}.get(
+            se.find("e:subjectType", ns).get("classificationCode", "E"), "entity")
+        primary, aliases = "", []
+        for na in se.findall("e:nameAlias", ns):
+            whole = clean(na.get("wholeName")) or clean(
+                f"{na.get('firstName','')} {na.get('middleName','')} {na.get('lastName','')}")
+            if not whole:
+                continue
+            if not primary:
+                primary = whole
+            else:
+                aliases.append(whole)
+        countries = [c.get("countryIso2Code", "") for c in se.findall("e:citizenship", ns)]
+        countries += [a.get("countryIso2Code", "") for a in se.findall("e:address", ns)]
+        dob, pob = "", ""
+        bd = se.find("e:birthdate", ns)
+        if bd is not None:
+            dob = clean(bd.get("birthdate", ""))
+        ids = []
+        for i in se.findall("e:identification", ns):
+            num = i.get("number", "")
+            if num:
+                ids.append(f"{i.get('identificationTypeCode','id')}: {num}")
+        reg = se.find("e:regulation", ns)
+        prog = reg.get("programme", "") if reg is not None else ""
+        listed = reg.get("entryIntoForceDate", "") if reg is not None else ""
+        out.append(entity(
+            id=f"EU-{se.get('logicalId','')}", source="EU", type=typ, name=primary,
+            aliases=aliases, countries=countries, programs=[prog], dob=dob,
+            identifiers=ids[:10], listed_on=listed,
+            remarks=clean(se.findtext("e:remark", "", ns))[:500],
+        ))
+    return out
+
+
+def parse_un(path):
+    tree = ET.parse(path)
+    out = []
+    root = tree.getroot()
+
+    def aliases_of(node, tag, fields):
+        return [clean(" ".join(clean(a.findtext(f, "")) for f in fields))
+                for a in node.findall(tag)]
+
+    for ind in root.findall("./INDIVIDUALS/INDIVIDUAL"):
+        name = clean(" ".join(clean(ind.findtext(f, "")) for f in
+                              ("FIRST_NAME", "SECOND_NAME", "THIRD_NAME", "FOURTH_NAME")))
+        countries = [clean(n.findtext("COUNTRY", "")) for n in ind.findall("./INDIVIDUAL_ADDRESS")]
+        countries += [clean(n.text) for n in ind.findall("./NATIONALITY/VALUE")]
+        dob = ""
+        if ind.find("./INDIVIDUAL_DATE_OF_BIRTH/DATE") is not None:
+            dob = clean(ind.findtext("./INDIVIDUAL_DATE_OF_BIRTH/DATE", ""))
+        out.append(entity(
+            id=f"UN-{ind.findtext('DATAID','')}", source="UN", type="person", name=name,
+            aliases=aliases_of(ind, "./INDIVIDUAL_ALIAS", ("ALIAS_NAME",)),
+            countries=countries, programs=[clean(ind.findtext("UN_LIST_TYPE", ""))],
+            dob=dob, listed_on=iso_date(ind.findtext("LISTED_ON", "")), listed_on_kind="official",
+            remarks=clean(ind.findtext("COMMENTS1", ""))[:500],
+        ))
+    for ent in root.findall("./ENTITIES/ENTITY"):
+        name = clean(ent.findtext("FIRST_NAME", ""))
+        countries = [clean(a.findtext("COUNTRY", "")) for a in ent.findall("./ENTITY_ADDRESS")]
+        out.append(entity(
+            id=f"UN-{ent.findtext('DATAID','')}", source="UN", type="entity", name=name,
+            aliases=aliases_of(ent, "./ENTITY_ALIAS", ("ALIAS_NAME",)),
+            countries=countries, programs=[clean(ent.findtext("UN_LIST_TYPE", ""))],
+            listed_on=iso_date(ent.findtext("LISTED_ON", "")), listed_on_kind="official",
+            remarks=clean(ent.findtext("COMMENTS1", ""))[:500],
+        ))
+    return out
+
+
+def parse_eumare(path):
+    """EU Journal Sanctions -> только суда под ст. 3s Регл. 833/2014 (Annex XLII/IV).
+    Мера — запрет захода в порты ЕС и морские услуги (port_ban), НЕ заморозка активов.
+    Дата включения извлекается из хвоста текста меры ('... - YYYY-MM-DD')."""
+    out = []
+    with open(path, newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            if (row.get("schema") or "").lower() != "vessel":
+                continue
+            sanc = clean(row.get("sanctions", ""))
+            if not sanc.startswith("Article 3s"):
+                continue
+            m = re.search(r"(\d{4}-\d{2}-\d{2})\s*$", sanc)
+            out.append(entity(
+                id=f"EUMARE-{row.get('id','')}", source="EUMARE", type="vessel",
+                name=clean(row.get("name", "")),
+                aliases=(row.get("aliases") or "").split(";"),
+                countries=(row.get("countries") or "").split(";"),
+                programs=["EU-RUS Art. 3s (Reg. 833/2014)"],
+                identifiers=(row.get("identifiers") or "").split(";")[:10],
+                listed_on=m.group(1) if m else "",
+                listed_on_kind="official" if m else "",
+                remarks=sanc[:500],
+                measures=["port_ban"],
+            ))
+    return out
+
+
+def parse_os_csv(path, source):
+    """OpenSanctions targets.simple.csv for AU/JP."""
+    out = []
+    with open(path, newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            typ = {"person": "person", "company": "entity", "organization": "entity",
+                   "vessel": "vessel", "aircraft": "aircraft", "legalentity": "entity",
+                   "publicbody": "entity"}.get((row.get("schema") or "").lower(), "entity")
+            out.append(entity(
+                id=f"{source}-{row.get('id','')}", source=source, type=typ,
+                name=clean(row.get("name", "")),
+                aliases=(row.get("aliases") or "").split(";"),
+                countries=(row.get("countries") or "").split(";"),
+                programs=[clean(row.get("sanctions", ""))],
+                dob=clean(row.get("birth_date", "")),
+                identifiers=(row.get("identifiers") or "").split(";")[:10],
+                listed_on=iso_date(row.get("first_seen", "")), listed_on_kind="os" if row.get("first_seen") else "",
+            ))
+    return out
+
+
+GEO_URLS = [
+    "https://cdn.jsdelivr.net/gh/nvkelso/natural-earth-vector@master/geojson/ne_110m_admin_0_countries.geojson",
+    "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson",
+]
+
+def _rnd_geo(coords, nd=2):
+    if isinstance(coords[0], (int, float)):
+        return [round(coords[0], nd), round(coords[1], nd)]
+    return [_rnd_geo(c, nd) for c in coords]
+
+def ensure_geojson():
+    """data/countries.geo.json — статичная геометрия стран для карты (Natural Earth 110m,
+    упрощённая до iso2/name + координаты с 2 знаками). Файл не хранится в репозитории
+    (текстовый лимит API), поэтому при отсутствии генерируется здесь."""
+    dest = OUT / "countries.geo.json"
+    if dest.exists() and dest.stat().st_size > 50_000:
+        return
+    last_err = None
+    for url in GEO_URLS:
+        try:
+            log(f"GEO: скачиваю {url}")
+            req = urllib.request.Request(url, headers=UA)
+            with urllib.request.urlopen(req, timeout=120) as r:
+                big = json.loads(r.read().decode("utf-8"))
+            feats = []
+            for f in big["features"]:
+                p = f.get("properties", {})
+                iso3 = p.get("ADM0_A3")
+                iso2 = next((p.get(k) for k in ("ISO_A2", "ISO_A2_EH", "ADM0_ISO")
+                             if p.get(k) and p.get(k) != "-99"), None)
+                name = p.get("NAME_EN") or p.get("NAME") or ""
+                if not iso2 or not iso3 or not f.get("geometry"):
+                    continue
+                feats.append({"type": "Feature", "id": iso3,
+                              "properties": {"iso2": iso2, "name": name},
+                              "geometry": {"type": f["geometry"]["type"],
+                                           "coordinates": _rnd_geo(f["geometry"]["coordinates"])}})
+            dest.write_text(json.dumps({"type": "FeatureCollection", "features": feats},
+                                       ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+            log(f"GEO: {len(feats)} стран, {dest.stat().st_size / 1024:.0f} КБ")
+            return
+        except Exception as ex:
+            last_err = ex
+            log(f"GEO: сбой ({ex})")
+    log(f"GEO: карта недоступна, продолжаю без неё ({last_err})")
+
+
+# ---------------- Main ----------------
+
+# Журнал здоровья источников: каждый источник отрабатывает независимо;
+# сбой одного не роняет сборку — откат на кеш (stale) или пропуск (failed).
+HEALTH = {}
+
+def fetch_source(key, parser, src=None, note=""):
+    s = src or SOURCES[key]
+    h = {"name": s.get("name", note or key), "url": s["url"].split("?")[0],
+         "status": "failed", "records": 0, "error": "", "note": note}
+    dest = RAW / s["file"]
+    try:
+        path = download(key, src)
+        ents = parser(path)
+        h.update(status="ok", records=len(ents),
+                 cached=not (os.environ.get("REFRESH") == "1"))
+        HEALTH[key] = h
+        return ents
+    except Exception as ex:
+        h["error"] = str(ex)[:300]
+        if dest.exists() and dest.stat().st_size > 10_000:
+            try:
+                ents = parser(dest)  # откат на последний удачный снимок
+                h.update(status="stale", records=len(ents))
+                HEALTH[key] = h
+                log(f"{key}: СБОЙ скачивания, использую устаревший кеш ({ex})")
+                return ents
+            except Exception as ex2:
+                h["error"] = f"{h['error']} | cache parse: {str(ex2)[:150]}"
+        HEALTH[key] = h
+        log(f"{key}: ИСТОЧНИК НЕДОСТУПЕН, пропускаю ({ex})")
+        return []
 
 
 def main():
-    t0 = time.time()
-    log("=== SanctionsWatch build ===")
+    parsers = {"US": parse_us, "UK": parse_uk, "UN": parse_un,
+               "EU": lambda p: parse_os_csv(p, "EU"), "EUMARE": parse_eumare,
+               "AU": lambda p: parse_os_csv(p, "AU"), "JP": lambda p: parse_os_csv(p, "JP"),
+               "CA": lambda p: parse_os_csv(p, "CA"), "CH": lambda p: parse_os_csv(p, "CH")}
     all_entities = []
-    stats = {}
-
-    # --- OpenSanctions наборы ---
-    for ds, code in OS_SOURCES.items():
-        url = f"https://data.opensanctions.org/datasets/latest/{ds}/targets.simple.json"
-        dest = RAW / f"os_{ds}.json"
-        try:
-            raw = fetch(url, dest)
-        except Exception as e:
-            log(f"  SKIP {ds}: {e}")
-            stats[code] = stats.get(code, 0)
-            continue
-        text = raw.decode("utf-8", "replace")
-        ents = parse_ftm(text, code)
-        log(f"  {code} <- {ds}: {len(ents)} сущностей")
-        stats[code] = stats.get(code, 0) + len(ents)
+    source_dates = {}
+    for key, parser in parsers.items():
+        ents = fetch_source(key, parser)
+        if ents:
+            log(f"{key}: распознано {len(ents)} записей")
         all_entities.extend(ents)
-
-    # --- IMO: UK из Statement of Reasons, CH из полного FTM ---
-    uk_imo_added = 0
-    for e in all_entities:
-        if e["src"] == "UK":
-            value = imo_from_text(e.get("notes", ""))
-            before = len(e["identifiers"])
-            add_imo(e, value, "UK Statement of Reasons")
-            uk_imo_added += len(e["identifiers"]) - before
-
-    ch_full = RAW / "os_ch_seco_sanctions_full.ftm.json"
+        source_dates[key] = datetime.now(timezone.utc).date().isoformat()
+    # IMO судов SECO: simplified CSV не содержит notes, поэтому дополняем из полного FTM.
     try:
-        fetch("https://data.opensanctions.org/datasets/latest/ch_seco_sanctions/entities.ftm.json", ch_full)
-    except Exception as e:
-        log(f"  CH full FTM unavailable, cache/fallback: {e}")
-    ch_imo_added = enrich_ch_imos(all_entities, ch_full)
-    log(f"  IMO enrichment: UK +{uk_imo_added}, CH +{ch_imo_added}")
+        ch_full_path = download("CH_FULL", CH_FULL)
+        joined, available = enrich_ch_imos(all_entities, ch_full_path)
+        log(f"CH IMO: дополнено {joined} идентификаторов из {available} судов полного экспорта")
+        HEALTH["CH_FULL"] = {"name": "OpenSanctions SECO full FTM (IMO из notes/referents)",
+                             "url": CH_FULL["url"], "status": "ok", "records": available,
+                             "error": "", "note": "вспомогательный"}
+    except Exception as ex:
+        log(f"CH IMO: полный экспорт пропущен ({ex})")
+        HEALTH["CH_FULL"] = {"name": "OpenSanctions SECO full FTM (IMO из notes/referents)",
+                             "url": CH_FULL["url"], "status": "failed", "records": 0,
+                             "error": str(ex)[:300], "note": "вспомогательный"}
+    # OFAC Consolidated (non-SDN) — дополняет источник US
+    cons_ents = fetch_source("US_CONS", lambda p: parse_us(p, id_prefix="USC", measures=["non_sdn"]),
+                             US_CONS, note="OFAC Consolidated non-SDN (дополнение к US)")
+    log(f"US_CONS: распознано {len(cons_ents)} записей (non-SDN)")
+    all_entities.extend(cons_ents)
 
-    log(f"Всего до дедупликации: {len(all_entities)}")
-    all_entities = dedupe(all_entities)
+    # Даты first_seen для судов OFAC: точный джойн по IMO к OpenSanctions-зеркалу SDN
+    try:
+        us_os_path = download("US_OS", US_OS)
+        imo_seen = {}
+        with open(us_os_path, newline="", encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                fs = iso_date(row.get("first_seen", ""))
+                if not fs:
+                    continue
+                for m in re.finditer(r"IMO\s*:?\s*(\d{7})", row.get("identifiers", ""), re.I):
+                    imo_seen[m.group(1)] = fs
+        joined = 0
+        for e in all_entities:
+            if e["source"] != "US" or e["listed_on"]:
+                continue
+            imos = [m.group(1) for i in e["identifiers"]
+                    for m in [re.search(r"IMO\s*:?\s*(\d{7})", i, re.I)] if m]
+            for imo in imos:
+                if imo in imo_seen:
+                    e["listed_on"], e["listed_on_kind"] = imo_seen[imo], "os"
+                    joined += 1
+                    break
+        log(f"US first_seen по IMO: {joined} судов из {len(imo_seen)} в зеркале")
+        HEALTH["US_OS"] = {"name": "OpenSanctions SDN-зеркало (даты first_seen для судов US)",
+                           "url": US_OS["url"].split("?")[0], "status": "ok",
+                           "records": len(imo_seen), "error": "", "note": "вспомогательный"}
+    except Exception as ex:
+        log(f"US_OS: пропущено ({ex})")
+        HEALTH["US_OS"] = {"name": "OpenSanctions SDN-зеркало (даты first_seen для судов US)",
+                           "url": US_OS["url"].split("?")[0], "status": "failed",
+                           "records": 0, "error": str(ex)[:300], "note": "вспомогательный"}
+
+    # De-dup: drop entries without any name
+    all_entities = [e for e in all_entities if e["name"]]
+
+    # Геометрия стран для карты (генерируется при отсутствии; сбой не роняет сборку)
+    ensure_geojson()
+
+    # Предохранитель: если суммарно записей < 80% предыдущего среза — данные не публикуем,
+    # чтобы сбой источников не обнулил сайт. health.json всё равно пишем ниже.
+    prev_stats = OUT / "stats.json"
+    if prev_stats.exists():
+        prev_total = json.loads(prev_stats.read_text(encoding="utf-8")).get("total", 0)
+        if prev_total and len(all_entities) < prev_total * 0.8:
+            log(f"ПРЕДОХРАНИТЕЛЬ: {len(all_entities)} записей против {prev_total} в прошлом срезе — публикация отменена")
+            (OUT / "health.json").write_text(json.dumps(
+                {"generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                 "guard": f"aborted: {len(all_entities)} < 80% of {prev_total}",
+                 "sources": HEALTH}, ensure_ascii=False, indent=1), encoding="utf-8")
+            sys.exit(1)
     for e in all_entities:
-        # Страховка от пустых значений и дублей после склейки источников.
-        e["identifiers"] = [x for x in e["identifiers"] if str(x.get("value", "")).strip()]
-        e["id_details"] = [x for x in e["id_details"] if str(x.get("value", "")).strip()]
-    log(f"После дедупликации: {len(all_entities)}")
+        e["key"] = norm_key(e["name"])
+        enrich_country(e)
 
-    all_entities.sort(key=lambda e: (e["src"], e["nname"]))
-    entities = [compact(e) for e in all_entities]
+    # ---- stats ----
+    by_source = Counter(e["source"] for e in all_entities)
+    by_type = Counter(e["type"] for e in all_entities)
+    by_country = Counter()
+    by_program = Counter()
+    by_measure = Counter()
+    by_year = Counter()
+    by_year_official, by_year_os = Counter(), Counter()
+    for e in all_entities:
+        for c in e["countries"] or ["ZZ"]:
+            by_country[c] += 1
+        for g in program_groups(e["programs"], e["name"], e["remarks"]):
+            by_program[g] += 1
+        for m in e["measures"]:
+            by_measure[m] += 1
+        if e["listed_on"][:4].isdigit():
+            by_year[e["listed_on"][:4]] += 1
+            (by_year_official if e["listed_on_kind"] == "official" else by_year_os)[e["listed_on"][:4]] += 1
+    # Уникальные субъекты: дедупликация по (норм. имя + дата рождения) между списками.
+    # Оценочная метрика: формальная дедупликация сущностей требует графа связей.
+    uniq = set()
+    for e in all_entities:
+        uniq.add((e["key"], e["dob"]))
+    stats = {
+        "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "total": len(all_entities),
+        "unique_subjects": len(uniq),
+        "by_source": dict(by_source.most_common()),
+        "by_type": dict(by_type.most_common()),
+        "by_country": dict(by_country.most_common(60)),
+        "by_program": dict(by_program.most_common(25)),
+        "by_measure": dict(by_measure.most_common()),
+        # год включения в список: official (UK/UN) + прокси first_seen (EU/AU/JP/CA/CH, суды US)
+        "by_year": dict(sorted(by_year.items())),
+        "by_year_official": dict(sorted(by_year_official.items())),
+        "by_year_os": dict(sorted(by_year_os.items())),
+        "by_year_note": "official: UK/UN designation dates; os: OpenSanctions first_seen proxy (tracking started 2022-2024, so pre-2022 os years mean 'not earlier than')",
+        "sources": {k: {"name": v["name"], "url": v["url"].split("?")[0],
+                        "via": v.get("via", "официальный источник (прямая загрузка)")}
+                    for k, v in SOURCES.items()},
+    }
+    (OUT / "entities").mkdir(parents=True, exist_ok=True)
+    (OUT / "stats.json").write_text(json.dumps(stats, ensure_ascii=False, indent=1))
+    (OUT / "health.json").write_text(json.dumps(
+        {"generated_at": stats["generated_at"], "guard": "", "sources": HEALTH},
+        ensure_ascii=False, indent=1), encoding="utf-8")
 
-    now = datetime.now(timezone.utc)
-    payload = json.dumps(entities, ensure_ascii=False, separators=(",", ":"))
-    content_hash = hashlib.sha256(payload.encode()).hexdigest()[:16]
-    (ENT / "all.json").write_text(payload, encoding="utf-8")
-    log(f"all.json: {len(payload)/1e6:.1f} MB, hash {content_hash}")
+    # ---- single flat file (client loads it once, browser caches it) ----
+    (OUT / "entities").mkdir(parents=True, exist_ok=True)
+    # имена прежних записей — нужны чейнджлогу, чтобы назвать удалённые
+    prev_names = {}
+    old_all = OUT / "entities" / "all.json"
+    if old_all.exists():
+        try:
+            for e in json.loads(old_all.read_text()):
+                prev_names[e["id"]] = e["name"]
+        except Exception:
+            pass
+    for old in (OUT / "entities").glob("*.json"):
+        old.rmdir() if old.is_dir() else old.unlink()
+    all_entities.sort(key=lambda x: x["key"])
+    (OUT / "entities" / "all.json").write_text(
+        json.dumps(all_entities, ensure_ascii=False, separators=(",", ":")))
+    size_mb = (OUT / "entities" / "all.json").stat().st_size / 1e6
+    log(f"entities/all.json: {size_mb:.1f} МБ")
 
-    # --- changelog: diff против предыдущего snapshot ---
-    snap_path = LOG / "snapshot.json"
+    # ---- changelog (diff vs previous snapshot) ----
+    snap_path = OUT / "snapshot_ids.json"
     prev = {}
     if snap_path.exists():
-        try:
-            prev = {e["id"]: e for e in json.loads(snap_path.read_text(encoding="utf-8"))}
-        except Exception:
-            prev = {}
-    curr = {e["id"]: e for e in entities}
+        prev = json.loads(snap_path.read_text())
+    cur = defaultdict(set)
+    names = {}
+    for e in all_entities:
+        cur[e["source"]].add(e["id"])
+        names[e["id"]] = e["name"]
+    changes = {}
+    for src in SOURCES:
+        prev_src = prev.get(src)
+        added = sorted(cur[src] - set(prev_src or []))
+        removed = sorted(set(prev_src or []) - cur[src])
+        # prev_src is None при непустом prev = источник добавлен в пайплайн сейчас:
+        # весь его срез фиксируем в аудит-трейле как added
+        if (prev_src is not None or prev) and (added or removed):
+            changes[src] = {
+                "added": [{"id": i, "name": names.get(i, "")} for i in added],
+                "removed": [{"id": i, "name": prev_names.get(i, "")} for i in removed],
+                "removed_count": len(removed),
+                "added_count": len(added),
+            }
+    if changes or not prev:
+        entry = {"ts": stats["generated_at"], "changes": changes,
+                 "initial": not bool(prev)}
+        with open(OUT / "changelog.jsonl", "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        log(f"Changelog: {json.dumps({s: (c['added_count'], c['removed_count']) for s, c in changes.items()})}")
+    snap_path.write_text(json.dumps({k: sorted(v) for k, v in cur.items()}))
 
-    def fp(e):
-        return hashlib.sha1(json.dumps({k: e.get(k) for k in ("name", "aliases", "programs", "measures", "notes")},
-                                        ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:12]
+    # ---- cache-busting: штампуем версию ассетов в index.html ----
+    idx = ROOT / "index.html"
+    if idx.exists():
+        html = idx.read_text()
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M")
+        html = re.sub(r'(app\.js|styles\.css|fonts\.css)\?v=[^"\']*', rf"\1?v={stamp}", html)
+        html = re.sub(r"(app\.js|styles\.css|fonts\.css)(?!\?)", rf"\1?v={stamp}", html)
+        idx.write_text(html)
+        log(f"Asset stamp: {stamp}")
 
-    added = [e for k, e in curr.items() if k not in prev]
-    removed = [e for k, e in prev.items() if k not in curr]
-    modified = []
-    for k, e in curr.items():
-        if k in prev and fp(e) != fp(prev[k]):
-            modified.append({"id": k, "name": e["name"], "src": e["src"], "before": {f: prev[k].get(f) for f in ("programs", "notes")},
-                             "after": {f: e.get(f) for f in ("programs", "notes")}})
-
-    stamp = now.strftime("%Y-%m-%d")
-    if prev and (added or removed or modified):
-        change = {
-            "ts": now.isoformat(),
-            "date": stamp,
-            "added": [{"id": e["id"], "name": e["name"], "src": e["src"], "type": e.get("type"), "programs": e.get("programs", [])} for e in added],
-            "removed": [{"id": e["id"], "name": e["name"], "src": e["src"], "type": e.get("type")} for e in removed],
-            "modified": modified,
-            "counts": {"added": len(added), "removed": len(removed), "modified": len(modified)},
-        }
-        with (LOG / "changes.jsonl").open("a", encoding="utf-8") as f:
-            f.write(json.dumps(change, ensure_ascii=False) + "\n")
-        (LOG / "latest.json").write_text(json.dumps(change, ensure_ascii=False, indent=1), encoding="utf-8")
-        log(f"changelog: +{len(added)} -{len(removed)} ~{len(modified)}")
-    elif not prev:
-        # первая сборка — журнал не раздуваем: фиксируем только факт baseline
-        baseline = {"ts": now.isoformat(), "date": stamp, "baseline": True,
-                    "counts": {"added": 0, "removed": 0, "modified": 0, "total": len(entities)}}
-        (LOG / "latest.json").write_text(json.dumps(baseline, ensure_ascii=False, indent=1), encoding="utf-8")
-        log("changelog: baseline")
-    else:
-        log("changelog: без изменений")
-
-    snap_path.write_text(json.dumps([{"id": e["id"], "name": e["name"], "src": e["src"], "type": e.get("type"),
-                                       "aliases": e.get("aliases", []), "programs": e.get("programs", []),
-                                       "measures": e.get("measures", []), "notes": e.get("notes", "")} for e in entities],
-                                      ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
-
-    # --- index.json ---
-    by_type = {}
-    by_country = {}
-    by_measure = {}
-    by_year = {}
-    for e in entities:
-        by_type[e.get("type", "org")] = by_type.get(e.get("type", "org"), 0) + 1
-        for c in e.get("countries", []):
-            by_country[c] = by_country.get(c, 0) + 1
-        for m in e.get("measures", []):
-            by_measure[m] = by_measure.get(m, 0) + 1
-        y = (e.get("date") or "")[:4]
-        if y:
-            by_year[y] = by_year.get(y, 0) + 1
-
-    index = {
-        "generated_at": now.isoformat(),
-        "date": stamp,
-        "total": len(entities),
-        "hash": content_hash,
-        "sources": [{"code": c, **SOURCES_META[c], "count": sum(1 for e in entities if e["src"] == c)} for c in SOURCES_META],
-        "by_type": by_type,
-        "by_country": dict(sorted(by_country.items(), key=lambda x: -x[1])),
-        "by_measure": by_measure,
-        "by_year": dict(sorted(by_year.items())),
-        "countries": sorted({c for e in entities for c in e.get("countries", [])}),
-        "programs": sorted({p for e in entities for p in e.get("programs", [])}),
-    }
-    (ENT / "index.json").write_text(json.dumps(index, ensure_ascii=False, indent=1), encoding="utf-8")
-    log(f"Готово за {time.time()-t0:.0f}s: {len(entities)} сущностей, {len(index['countries'])} стран")
+    log(f"Готово: {len(all_entities)} записей")
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
