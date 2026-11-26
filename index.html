@@ -7,8 +7,8 @@
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link rel="preload" href="fonts/inter-cyrillic.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="fonts.css?v=202611250900">
-<link rel="stylesheet" href="styles.css?v=202611250900">
+<link rel="stylesheet" href="fonts.css?v=202611261632">
+<link rel="stylesheet" href="styles.css?v=202611261632">
 </head>
 <body>
 <header class="top">
@@ -186,12 +186,15 @@
 </main>
 
 <footer class="foot">
-  <span data-i18n="foot_data"></span>
-  <span class="muted" id="footGen"></span>
+  <span class="gbi-sign" style="display:inline-flex;align-items:center;gap:6px;font-size:13px;line-height:1.4;color:inherit;opacity:.75;white-space:nowrap">
+    <svg width="12" height="12" viewBox="0 0 65.28 65.28" aria-hidden="true" style="flex-shrink:0;fill:currentColor"><path d="M0 0h10v10H0zM13.82 0h10v10h-10zM27.64 0h10v10h-10zM41.46 0h10v10h-10zM55.28 0h10v10h-10zM0 13.82h10v10H0zM0 27.64h10v10H0zM0 41.46h10v10H0zM0 55.28h10v10H0zM13.82 55.28h10v10h-10zM27.64 55.28h10v10h-10zM41.46 55.28h10v10h-10zM55.28 55.28h10v10h-10zM55.28 41.46h10v10h-10zM55.28 27.64h10v10h-10z"/><path fill="#4F86BF" d="M41.46 27.64h10v10h-10z"/></svg>
+    <span>Developed by <b style="font-weight:600">Gadalov BI</b> · Built with AI</span>
+  </span>
+  <span id="footGen" hidden></span>
 </footer>
 
 <div class="info-tip" id="advTip" role="tooltip"></div>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="app.js?v=202611250900"></script>
+<script src="app.js?v=202611261632"></script>
 </body>
 </html>
