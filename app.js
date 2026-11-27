@@ -105,6 +105,9 @@ const I18N = {
     b_export: "Скачать отчёт (XLSX)",
     b_export_csv: "Скачать детализацию (CSV)",
     b_again: "Новая проверка",
+    b_again_title: "Начать новую проверку?",
+    b_again_warning: "Текущие результаты и раскрытая детализация будут удалены. Если они нужны, сначала скачайте отчёт XLSX или CSV.",
+    b_again_cancel: "Отмена", b_again_confirm: "Начать новую",
     b_st_match: "Совпадение", b_st_review: "Проверить вручную", b_st_clean: "Чисто",
     b_f_all: "Все",
     b_th_row: "Ваша запись", b_th_status: "Статус", b_th_score: "Скор",
@@ -222,6 +225,9 @@ const I18N = {
     b_export: "Download report (XLSX)",
     b_export_csv: "Download details (CSV)",
     b_again: "New check",
+    b_again_title: "Start a new check?",
+    b_again_warning: "The current results and expanded details will be deleted. If you need them, download the XLSX or CSV report first.",
+    b_again_cancel: "Cancel", b_again_confirm: "Start new",
     b_st_match: "Match", b_st_review: "Review manually", b_st_clean: "Clear",
     b_f_all: "All",
     b_th_row: "Your entry", b_th_status: "Status", b_th_score: "Score",
@@ -888,7 +894,7 @@ function idFlags(e) {
     dob: !!e.dob,
     doc: /passport|document|national id|id no|identification(?!: imo)|cedula|dpi/.test(ids) && !/vessel registration/.test(ids),
     tax: /fiscal|tax|inn|tin|инн/.test(ids),
-    imo: /imo\s*\d/.test(ids),
+    imo: /\bimo\s*:?\s*\d{7}\b/.test(ids),
   };
 }
 function pluralLists(n) {
@@ -1225,6 +1231,7 @@ function refreshAdvN() {
   const el = document.getElementById("advN");
   el.hidden = !n; el.textContent = n;
   advToggle.classList.toggle("active", n > 0);
+  document.getElementById("advReset").classList.toggle("has-values", n > 0);
 }
 advToggle.addEventListener("click", () => {
   const open = advPanel.hidden;
@@ -1892,9 +1899,32 @@ bEls.file.addEventListener("change", () => { if (bEls.file.files[0]) bHandleFile
   }));
 bEls.run.addEventListener("click", bRunBatch);
 bEls.back.addEventListener("click", () => { bEls.mapPanel.hidden = true; bEls.uploadPanel.hidden = false; });
-bEls.again.addEventListener("click", () => {
-  bResults = null; bExpanded = new Set(); bEls.file.value = "";
+const bAgainDialog = document.getElementById("bAgainDialog");
+function bResetBatch() {
+  bResults = null; bExpanded = new Set(); bFilter = "all";
+  bHeaders = []; bData = []; bFileName = "";
+  bEls.file.value = ""; bEls.fileInfo.textContent = "";
   bEls.resPanel.hidden = true; bEls.mapPanel.hidden = true; bEls.uploadPanel.hidden = false;
+}
+bEls.again.addEventListener("click", () => {
+  bAgainDialog.showModal();
+  document.getElementById("bAgainCancel").focus();
+});
+document.getElementById("bAgainCancel").addEventListener("click", () => bAgainDialog.close());
+document.getElementById("bAgainConfirm").addEventListener("click", () => {
+  bAgainDialog.close();
+  bResetBatch();
+});
+bAgainDialog.addEventListener("click", (ev) => {
+  if (ev.target !== bAgainDialog) return;
+  const r = bAgainDialog.getBoundingClientRect();
+  if (ev.clientX < r.left || ev.clientX > r.right || ev.clientY < r.top || ev.clientY > r.bottom) bAgainDialog.close();
+});
+window.addEventListener("beforeunload", (ev) => {
+  if (bResults || bEls.run.disabled || (!bEls.mapPanel.hidden && bData.length)) {
+    ev.preventDefault();
+    ev.returnValue = "";
+  }
 });
 bEls.export.addEventListener("click", bExportXlsx);
 bEls.exportCsv.addEventListener("click", bExportCsv);
