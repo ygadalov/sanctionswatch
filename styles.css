@@ -283,8 +283,8 @@ main{flex:1;max-width:1440px;width:100%;margin:0 auto;padding:24px}
 .adv-f input:focus,.adv-f select:focus{border-color:var(--accent);outline:none}
 .adv-reset{height:38px;background:none;border:1px solid var(--line);color:var(--muted);font-size:13px;border-radius:6px;padding:0 14px;cursor:pointer;white-space:nowrap}
 .adv-reset:hover{color:var(--text);border-color:var(--muted)}
-.adv-reset.has-values{color:var(--bad-fg);border-color:color-mix(in srgb,var(--bad-fg) 55%,transparent);background:var(--bad-bg)}
-.adv-reset.has-values:hover{border-color:var(--bad-fg);background:color-mix(in srgb,var(--bad-fg) 18%,transparent)}
+.adv-reset.has-values{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 55%,transparent);background:var(--chip-bg)}
+.adv-reset.has-values:hover{border-color:var(--accent);background:var(--row-sel)}
 .adv-hint{font-size:12px;color:var(--muted);margin-top:10px;line-height:1.5}
 .idmatch{margin-top:14px;padding:9px 12px;border-radius:6px;background:var(--ok-bg);color:var(--ok-fg);font-size:12.5px}
 
