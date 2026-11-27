@@ -1,5 +1,5 @@
 {
- "generated_at": "2026-11-26T11:14:03+00:00",
+ "generated_at": "2026-11-27T06:54:40+00:00",
  "guard": "",
  "sources": {
   "US": {
@@ -15,7 +15,7 @@
    "name": "UK Sanctions List (Великобритания)",
    "url": "https://sanctionslist.fcdo.gov.uk/docs/UK-Sanctions-List.xml",
    "status": "ok",
-   "records": 6457,
+   "records": 6458,
    "error": "",
    "note": "",
    "cached": false
@@ -33,7 +33,7 @@
    "name": "EU Consolidated FSF (ЕС)",
    "url": "https://data.opensanctions.org/datasets/latest/eu_fsf/targets.simple.csv",
    "status": "ok",
-   "records": 6195,
+   "records": 6197,
    "error": "",
    "note": "",
    "cached": false
@@ -51,7 +51,7 @@
    "name": "DFAT Consolidated List (Австралия)",
    "url": "https://data.opensanctions.org/datasets/latest/au_dfat_sanctions/targets.simple.csv",
    "status": "ok",
-   "records": 3912,
+   "records": 3914,
    "error": "",
    "note": "",
    "cached": false
@@ -82,6 +82,14 @@
    "error": "",
    "note": "",
    "cached": false
+  },
+  "CH_FULL": {
+   "name": "OpenSanctions SECO full FTM (IMO из notes/referents)",
+   "url": "https://data.opensanctions.org/datasets/latest/ch_seco_sanctions/entities.ftm.json",
+   "status": "ok",
+   "records": 697,
+   "error": "",
+   "note": "вспомогательный"
   },
   "US_CONS": {
    "name": "OFAC Consolidated non-SDN (дополнение к US)",
