@@ -1,5 +1,5 @@
 {
- "generated_at": "2026-11-27T06:54:40+00:00",
+ "generated_at": "2026-11-27T14:08:49+00:00",
  "guard": "",
  "sources": {
   "US": {
@@ -33,7 +33,7 @@
    "name": "EU Consolidated FSF (ЕС)",
    "url": "https://data.opensanctions.org/datasets/latest/eu_fsf/targets.simple.csv",
    "status": "ok",
-   "records": 6197,
+   "records": 6195,
    "error": "",
    "note": "",
    "cached": false
