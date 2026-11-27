@@ -159,7 +159,7 @@
       <p class="b-actions">
         <button type="button" class="btn btn-primary" id="bExport" data-i18n="b_export"></button>
         <button type="button" class="btn" id="bExportCsv" data-i18n="b_export_csv"></button>
-        <button type="button" class="btn" id="bAgain" data-i18n="b_again"></button>
+        <button type="button" class="btn danger-outline" id="bAgain" data-i18n="b_again"></button>
       </p>
       <div class="b-resfilter" id="bResFilter"></div>
       <div class="tblwrap"><table class="tbl b-restbl" id="bResTable"></table></div>
@@ -193,6 +193,15 @@
   </span>
   <span id="footGen" hidden></span>
 </footer>
+
+<dialog class="confirm-dialog" id="bAgainDialog" aria-labelledby="bAgainTitle" aria-describedby="bAgainWarning">
+  <h2 class="confirm-title" id="bAgainTitle" data-i18n="b_again_title"></h2>
+  <p class="confirm-text" id="bAgainWarning" data-i18n="b_again_warning"></p>
+  <div class="confirm-actions">
+    <button type="button" class="btn btn-primary" id="bAgainCancel" data-i18n="b_again_cancel"></button>
+    <button type="button" class="btn danger-outline" id="bAgainConfirm" data-i18n="b_again_confirm"></button>
+  </div>
+</dialog>
 
 <div class="info-tip" id="advTip" role="tooltip"></div>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
